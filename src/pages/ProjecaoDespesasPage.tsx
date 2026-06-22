@@ -50,6 +50,8 @@ export default function ProjecaoDespesaPage() {
   const [dadosApi, setDadosApi] = useState<any[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [barData, setBarData] = useState<any>(null);
+  const [barDataCategoria, setBarDataCategoria] = useState<any>(null);
+  const [modoGrafico, setModoGrafico] = useState<'tipo' | 'categoria'>('tipo');
 
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
@@ -220,6 +222,65 @@ export default function ProjecaoDespesaPage() {
             ],
           });
 
+          // --- GRÁFICO POR CATEGORIA (todas) ---
+          const CATEGORIA_CORES = [
+            'rgba(99, 102, 241, 0.85)',
+            'rgba(20, 184, 166, 0.85)',
+            'rgba(245, 158, 11, 0.85)',
+            'rgba(239, 68, 68, 0.85)',
+            'rgba(168, 85, 247, 0.85)',
+            'rgba(34, 197, 94, 0.85)',
+            'rgba(236, 72, 153, 0.85)',
+            'rgba(6, 182, 212, 0.85)',
+            'rgba(251, 113, 133, 0.85)',
+            'rgba(251, 191, 36, 0.85)',
+          ];
+
+          // Coletar todas as categorias únicas e somar totais no período
+          const totalPorCategoria: Record<string, number> = {};
+          listaDados.forEach((item: any) => {
+            (item.despesas || []).forEach((d: any) => {
+              if (d.categoriaNome) {
+                totalPorCategoria[d.categoriaNome] = (totalPorCategoria[d.categoriaNome] || 0) + (d.valor || 0);
+              }
+            });
+          });
+
+          // Ordem crescente: menor total na base, maior total no topo da barra empilhada
+          const categoriasUnicas = Object.keys(totalPorCategoria)
+            .sort((a, b) => totalPorCategoria[a] - totalPorCategoria[b]);
+
+          // Gerar um dataset por categoria
+          const datasetsCategoria = categoriasUnicas.map((cat, catIdx) => {
+            const data = listaDados.map((item: any) =>
+              (item.despesas || [])
+                .filter((d: any) => d.categoriaNome === cat)
+                .reduce((soma: number, d: any) => soma + (d.valor || 0), 0)
+            );
+            return {
+              label: cat,
+              data,
+              backgroundColor: CATEGORIA_CORES[catIdx % CATEGORIA_CORES.length],
+              datalabels: {
+                anchor: 'center',
+                align: 'center',
+                color: '#ffffff',
+                font: { weight: 'black', size: 10 },
+                formatter: (value: number, context: any) => {
+                  const i = context.dataIndex;
+                  const totalMes = valoresTotais[i];
+                  if (totalMes === 0 || value === 0) return '';
+                  return `${((value / totalMes) * 100).toFixed(0)}%`;
+                },
+              },
+            };
+          });
+
+          setBarDataCategoria({
+            labels: labelsFormatadas,
+            datasets: datasetsCategoria,
+          });
+
           const currentAnoMes = mesSelecionadoInfo?.anoMes;
           const aindaExiste = listaDados.find((item) => String(item.anoMes) === String(currentAnoMes));
 
@@ -232,6 +293,7 @@ export default function ProjecaoDespesaPage() {
         } else {
           setDadosApi([]);
           setBarData(null);
+          setBarDataCategoria(null);
           setMesSelecionadoInfo(null);
           setError('Nenhum dado de projeção foi retornado pelo servidor.');
         }
@@ -337,26 +399,55 @@ export default function ProjecaoDespesaPage() {
             <div>
               <h2 className="text-lg font-bold text-slate-800">Despesas Futuras</h2>
               <p className="text-xs text-slate-500">
-                Projeção mensal segmentada por tipo de despesa com o valor total fixado no topo externo de cada coluna.
+                {modoGrafico === 'tipo'
+                  ? 'Projeção mensal segmentada por tipo de despesa com o valor total fixado no topo de cada coluna.'
+                  : 'Projeção mensal segmentada por categoria com o valor total fixado no topo de cada coluna.'}
               </p>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-center">
-              <label htmlFor="filtro-meses" className="text-sm font-medium text-slate-600 whitespace-nowrap">
-                Projeção:
-              </label>
-              <select
-                id="filtro-meses"
-                value={qtdMesesProjecao}
-                onChange={(e) => setQtdMesesProjecao(Number(e.target.value))}
-                className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-xl focus:ring-orange-500 focus:border-orange-500 block p-2 font-semibold cursor-pointer"
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((mes) => (
-                  <option key={mes} value={mes}>
-                    {mes} {mes === 1 ? 'mês' : 'meses'}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
+              {/* Toggle: Modo do Gráfico */}
+              <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-0.5">
+                <button
+                  onClick={() => setModoGrafico('tipo')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    modoGrafico === 'tipo'
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Por Tipo
+                </button>
+                <button
+                  onClick={() => setModoGrafico('categoria')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    modoGrafico === 'categoria'
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Por Categoria
+                </button>
+              </div>
+
+              {/* Seletor de Quantidade de Meses */}
+              <div className="flex items-center gap-2">
+                <label htmlFor="filtro-meses" className="text-sm font-medium text-slate-600 whitespace-nowrap">
+                  Projeção:
+                </label>
+                <select
+                  id="filtro-meses"
+                  value={qtdMesesProjecao}
+                  onChange={(e) => setQtdMesesProjecao(Number(e.target.value))}
+                  className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-xl focus:ring-orange-500 focus:border-orange-500 block p-2 font-semibold cursor-pointer"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((mes) => (
+                    <option key={mes} value={mes}>
+                      {mes} {mes === 1 ? 'mês' : 'meses'}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -368,9 +459,9 @@ export default function ProjecaoDespesaPage() {
               </div>
             ) : error ? (
               <div className="text-sm text-rose-500 text-center px-4">{error}</div>
-            ) : barData ? (
+            ) : (modoGrafico === 'tipo' ? barData : barDataCategoria) ? (
               <Bar
-                data={barData}
+                data={modoGrafico === 'tipo' ? barData : barDataCategoria}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
