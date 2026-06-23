@@ -272,10 +272,10 @@ export default function DespesasPage() {
     setModalRegraAberto(true);
   };
 
-  // Função provisória para salvar a regra automática com validações de obrigatoriedade
-  const handleSalvarRegra = () => {
+  // Salva a regra automática via POST /api/regras com Bearer Token
+  const handleSalvarRegra = async () => {
     if (!formRegraTermo.trim()) {
-      alert('O campo Termo Chave é obrigatório.');
+      alert('O campo Termo Busca é obrigatório.');
       return;
     }
     if (!formRegraCategoria) {
@@ -283,12 +283,26 @@ export default function DespesasPage() {
       return;
     }
 
-    console.log('Dados da Nova Regra:', {
+    const payload = {
+      categoriaId: Number(formRegraCategoria),
       descricao: formRegraDescricao,
-      categoriaId: formRegraCategoria,
-      termo: formRegraTermo
-    });
-    setModalRegraAberto(false);
+      termoBusca: formRegraTermo.trim(),
+    };
+
+    try {
+      const response = await axios.post('/api/regras', payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.status === 200 || response.status === 201) {
+        setModalRegraAberto(false);
+      } else {
+        setToastMessage('Erro ao salvar a regra.');
+      }
+    } catch (err: any) {
+      console.error('Erro ao salvar regra:', err);
+      setToastMessage(err.response?.data?.message || 'Erro ao salvar a regra.');
+    }
   };
 
   const handleSalvar = async () => {
@@ -704,7 +718,7 @@ export default function DespesasPage() {
               {/* Campo Termo - Obrigatório */}
               <div className="flex flex-col gap-1">
                 <label className="font-bold text-slate-500 uppercase tracking-wide text-[10px]">
-                  Termo Chave <span className="text-rose-500">*</span>
+                  Termo Busca <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
