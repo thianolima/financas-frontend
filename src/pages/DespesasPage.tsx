@@ -91,6 +91,8 @@ export default function DespesasPage() {
   const [formRegraCategoria, setFormRegraCategoria] = useState<string>('');
   const [formRegraTermo, setFormRegraTermo] = useState<string>('');
 
+
+
   const MESES_NOMES = [
     'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'
   ];
@@ -483,7 +485,16 @@ export default function DespesasPage() {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => alert('Categorizando...')} className="flex items-center gap-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-sky-400 px-3 py-2 rounded-lg border border-slate-700 cursor-pointer">
+            <button
+              onClick={() => {
+                axios.post('/api/despesas/processar-regras', { despesasIds: itensSelecionados }, {
+                  headers: { Authorization: `Bearer ${token}` },
+                }).catch((err) => console.error('Erro ao reclassificar despesas:', err));
+                setToastMessage('Reclassificação iniciada com sucesso!');
+                setItensSelecionados([]);
+              }}
+              className="flex items-center gap-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-sky-400 px-3 py-2 rounded-lg border border-slate-700 cursor-pointer"
+            >
               <RefreshCw size={14} /> Categorizar Automático
             </button>
             <button onClick={() => setItensSelecionados([])} className="text-xs text-slate-400 hover:text-white font-medium cursor-pointer pl-2">Cancelar</button>
