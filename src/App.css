@@ -1,3 +1,13 @@
+/* Animação do sininho ao receber notificação via SSE */
+@keyframes wiggle {
+  0%,
+  100% { transform: rotate(0deg); }
+  20%  { transform: rotate(-18deg); }
+  40%  { transform: rotate(18deg); }
+  60%  { transform: rotate(-12deg); }
+  80%  { transform: rotate(12deg); }
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
