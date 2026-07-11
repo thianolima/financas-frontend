@@ -58,7 +58,7 @@ function App() {
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [loadingNotif, setLoadingNotif] = useState<boolean>(false);
   const [newNotifCount, setNewNotifCount] = useState<number>(0);
-  const sseRef = useRef<EventSource | null>(null);
+  const sseRef = useRef<AbortController | null>(null);
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -74,9 +74,9 @@ function App() {
   };
 
   const handleLogout = useCallback(() => {
-    // Fecha o canal SSE antes de deslogar
+    // Aborta o canal SSE antes de deslogar
     if (sseRef.current) {
-      sseRef.current.close();
+      sseRef.current.abort();
       sseRef.current = null;
     }
     localStorage.removeItem('@financeiro:token');
@@ -96,48 +96,85 @@ function App() {
   }
 
   // Abre/fecha o canal SSE sempre que o token mudar
+  // Usa fetch + ReadableStream para enviar o token no header Authorization
+  // (EventSource nativo não suporta headers customizados)
   useEffect(() => {
     if (!token) return;
 
-    // Fecha conexão anterior caso exista
+    // Aborta conexão anterior caso exista
     if (sseRef.current) {
-      sseRef.current.close();
+      sseRef.current.abort();
       sseRef.current = null;
     }
 
-    const url = `/api/notificacoes/stream?token=${encodeURIComponent(token)}`;
-    const es = new EventSource(url);
-    sseRef.current = es;
+    const controller = new AbortController();
+    sseRef.current = controller;
 
-    es.onmessage = (event) => {
-      try {
-        const nova: Notificacao = JSON.parse(event.data);
-        setNotificacoes(prev => {
-          // Evita duplicatas pela dataHoraCriacao
-          const jaTem = prev.some(n => n.dataHoraCriacao === nova.dataHoraCriacao && n.tipo === nova.tipo);
-          if (jaTem) return prev;
-          return [nova, ...prev]; // mais recente no topo
-        });
-        // Incrementa badge de novas apenas com dropdown fechado
-        setBellOpen(open => {
-          if (!open) setNewNotifCount(c => c + 1);
-          return open;
-        });
-      } catch {
-        // dado não é JSON válido, ignora
-      }
-    };
+    let buffer = '';
 
-    es.onerror = () => {
-      // EventSource reconecta automaticamente; apenas loga em dev
-      if (import.meta.env.DEV) console.warn('[SSE] Tentando reconectar...');
-    };
+    fetch('/api/notificacoes/stream', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'text/event-stream',
+      },
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok || !res.body) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // Processa blocos completos do protocolo SSE (separados por \n\n)
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() ?? '';
+
+          for (const part of parts) {
+            if (!part.trim()) continue;
+
+            const eventLine = part.split('\n').find(l => l.startsWith('event:'));
+            const eventName = eventLine?.slice('event:'.length).trim() ?? '';
+
+            if (import.meta.env.DEV) {
+              console.info(`[SSE] evento recebido: ${eventName || 'message'}`);
+            }
+
+            // Ignora PING enviado pelo ALB para manter a conexão ativa
+            if (eventName === 'PING') continue;
+
+            axios.get<Notificacao[]>('/api/notificacoes')
+              .then(response => {
+                const sorted = [...response.data].sort(
+                  (a, b) => new Date(b.dataHoraCriacao).getTime() - new Date(a.dataHoraCriacao).getTime()
+                );
+                setNotificacoes(sorted);
+                // Incrementa badge apenas com dropdown fechado
+                setBellOpen(open => {
+                  if (!open) setNewNotifCount(c => c + 1);
+                  return open;
+                });
+              })
+              .catch(() => {/* silencia erro de fetch de notificações */});
+          }
+
+        }
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') return; // encerramento intencional
+        if (import.meta.env.DEV) console.warn('[SSE] Erro na conexão:', err);
+      });
 
     return () => {
-      es.close();
+      controller.abort();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
 
   const fetchNotificacoes = useCallback(async () => {
     if (!token) return;
