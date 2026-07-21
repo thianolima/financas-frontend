@@ -45,8 +45,8 @@ export default function DespesasPage() {
   const [filtroCartao, setFiltroCartao] = useState<string>('TODOS');
 
   // Período de Busca
-  const [anoAtual, setAnoAtual] = useState<number>(2026);
-  const [mesAtual, setMesAtual] = useState<number>(6);
+  const [anoAtual, setAnoAtual] = useState<number>(() => new Date().getFullYear());
+  const [mesAtual, setMesAtual] = useState<number>(() => new Date().getMonth() + 1);
 
   // Controle de Dados da API
   const [despesas, setDespesas] = useState<Despesa[]>([]);
@@ -76,8 +76,15 @@ export default function DespesasPage() {
   // Estados do Formulário de Despesa
   const [formDescricao, setFormDescricao] = useState<string>('');
   const [formValor, setFormValor] = useState<string>('R$ 0,00');
-  const [formDataDespesa, setFormDataDespesa] = useState<string>('2026-06-03');
-  const [formDataVencimento, setFormDataVencimento] = useState<string>('2026-06-10');
+  const [formDataDespesa, setFormDataDespesa] = useState<string>(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
+  const [formDataVencimento, setFormDataVencimento] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split('T')[0];
+  });
   const [formCategoria, setFormCategoria] = useState<string>('');
   const [formCartao, setFormCartao] = useState<string>('');
   const [formTipo, setFormTipo] = useState<string>('AVULSO');
