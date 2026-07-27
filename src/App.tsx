@@ -5,7 +5,8 @@ import ProjecaoDespesaPage from './pages/ProjecaoDespesasPage';
 import Profile from './pages/Profile';
 import Login from './pages/LoginPage';
 import DespesasPage from './pages/DespesasPage';
-import { LayoutDashboard, User, ReceiptText, TrendingUp, Bell, Menu } from 'lucide-react';
+import CartoesPage from './pages/CartoesPage';
+import { LayoutDashboard, User, ReceiptText, TrendingUp, Bell, Menu, CreditCard } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import axios from 'axios';
 
@@ -63,6 +64,7 @@ function App() {
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'despesas', label: 'Despesas', icon: ReceiptText },
+    { id: 'cartoes', label: 'Cartões', icon: CreditCard },
     { id: 'projecao', label: 'Projeção', icon: TrendingUp },
     { id: 'profile', label: 'Perfil', icon: User },
   ];
@@ -216,6 +218,7 @@ function App() {
     switch (activePage) {
       case 'dashboard': return <Dashboard />;
       case 'despesas': return <DespesasPage />;
+      case 'cartoes': return <CartoesPage />;
       case 'projecao': return <ProjecaoDespesaPage />;
       case 'profile': return <Profile />;
       default: return <Dashboard />;

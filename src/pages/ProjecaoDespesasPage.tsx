@@ -59,7 +59,7 @@ export default function ProjecaoDespesaPage() {
   const [mesSelecionadoInfo, setMesSelecionadoInfo] = useState<any | null>(null);
 
   // Controle da quantidade de meses da projeção (Default: 6 meses)
-  const [qtdMesesProjecao, setQtdMesesProjecao] = useState<number>(6);
+  const [qtdMesesProjecao, setQtdMesesProjecao] = useState<number>(3);
 
   // Estados para armazenar os filtros da tabela e dos cards
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
@@ -606,9 +606,9 @@ export default function ProjecaoDespesaPage() {
                   className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-xl p-2.5 outline-none font-semibold h-10 cursor-pointer shadow-xs focus:border-orange-500"
                 >
                   <option value="TODOS">Todos os Tipos</option>
-                  <option value="AVULSO">Apenas Avulsos</option>
-                  <option value="PARCELADO">Apenas Parcelados</option>
-                  <option value="RECORRENTE">Apenas Recorrentes</option>
+                  <option value="AVULSO">Avulso</option>
+                  <option value="PARCELADO">Parcelado</option>
+                  <option value="RECORRENTE">Recorrente</option>
                 </select>
               </div>
 
