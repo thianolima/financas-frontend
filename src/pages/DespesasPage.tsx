@@ -17,6 +17,7 @@ interface Despesa {
   id: number;
   cartaoId: number | null;
   cartaoNome: string | null;
+  cartaoCor?: string | null;
   categoriaId: number | null;
   categoriaNome: string | null;
   descricao: string;
@@ -35,6 +36,44 @@ interface Cartao {
   id: number;
   nome: string;
 }
+
+// Mapeamento dinâmico do campo cartaoCor para as cores do ícone na tabela
+const getCartaoStyles = (cor?: string | null) => {
+  if (!cor) {
+    return 'bg-orange-50 text-orange-500 border-orange-100';
+  }
+
+  const key = cor.toUpperCase().trim();
+
+  switch (key) {
+    case 'AZUL':
+    case 'BLUE':
+      return 'bg-blue-50 text-blue-600 border-blue-200';
+    case 'PRETO':
+    case 'BLACK':
+      return 'bg-slate-100 text-slate-800 border-slate-300';
+    case 'ROXO':
+    case 'PURPLE':
+      return 'bg-purple-50 text-purple-600 border-purple-200';
+    case 'VERDE':
+    case 'GREEN':
+      return 'bg-emerald-50 text-emerald-600 border-emerald-200';
+    case 'VERMELHO':
+    case 'RED':
+      return 'bg-rose-50 text-rose-600 border-rose-200';
+    case 'LARANJA':
+    case 'ORANGE':
+      return 'bg-orange-50 text-orange-600 border-orange-200';
+    case 'ROSA':
+    case 'PINK':
+      return 'bg-pink-50 text-pink-600 border-pink-200';
+    case 'PRATA':
+    case 'SILVER':
+      return 'bg-slate-100 text-slate-500 border-slate-200';
+    default:
+      return 'bg-orange-50 text-orange-500 border-orange-100';
+  }
+};
 
 export default function DespesasPage() {
   const token = localStorage.getItem('@financeiro:token') || '';
@@ -97,8 +136,6 @@ export default function DespesasPage() {
   const [formRegraDescricao, setFormRegraDescricao] = useState<string>('');
   const [formRegraCategoria, setFormRegraCategoria] = useState<string>('');
   const [formRegraTermo, setFormRegraTermo] = useState<string>('');
-
-
 
   const MESES_NOMES = [
     'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'
@@ -264,12 +301,10 @@ export default function DespesasPage() {
     setModalAberto(true);
   };
 
-  // Função gatilho para a criação da regra automática abrindo o novo modal
   const handleCriarRegraAutomatica = (despesa: Despesa) => {
     setFormRegraDescricao(despesa.descricao || '');
     setFormRegraTermo(despesa.descricao || '');
 
-    // Se a despesa já possui uma categoria válida, seleciona ela, senão pega a primeira da lista padrão
     if (despesa.categoriaId) {
       setFormRegraCategoria(despesa.categoriaId.toString());
     } else if (listaCategorias.length > 0) {
@@ -281,7 +316,6 @@ export default function DespesasPage() {
     setModalRegraAberto(true);
   };
 
-  // Salva a regra automática via POST /api/regras com Bearer Token
   const handleSalvarRegra = async () => {
     if (!formRegraTermo.trim()) {
       alert('O campo Termo Busca é obrigatório.');
@@ -537,6 +571,8 @@ export default function DespesasPage() {
               <tbody className="divide-y divide-slate-100">
                 {despesas.map((despesa) => {
                   const tipoStr = despesa.parcelado ? 'PARCELADO' : despesa.recorrente ? 'RECORRENTE' : 'AVULSO';
+                  const cartaoStyleClass = getCartaoStyles(despesa.cartaoCor);
+
                   return (
                     <tr key={despesa.id} className={`hover:bg-slate-50/70 transition-colors ${itensSelecionados.includes(despesa.id) ? 'bg-sky-50/10' : ''}`}>
                       <td className="px-6 py-4 text-center">
@@ -545,7 +581,10 @@ export default function DespesasPage() {
                       <td className="px-4 py-3.5 font-semibold text-slate-900 truncate">
                         <div className="flex items-center gap-3">
                           {despesa.cartaoId ? (
-                            <div className="p-1.5 bg-orange-50 text-orange-500 border border-orange-100 rounded-lg shrink-0" title={despesa.cartaoNome ? `Cartão: ${despesa.cartaoNome}` : 'Cartão de Crédito'}>
+                            <div
+                              className={`p-1.5 border rounded-lg shrink-0 transition-colors ${cartaoStyleClass}`}
+                              title={despesa.cartaoNome ? `Cartão: ${despesa.cartaoNome}` : 'Cartão de Crédito'}
+                            >
                               <CreditCard size={14} />
                             </div>
                           ) : (

@@ -50,15 +50,13 @@ export default function ProjecaoDespesaPage() {
   const [dadosApi, setDadosApi] = useState<any[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [barData, setBarData] = useState<any>(null);
-  const [barDataCategoria, setBarDataCategoria] = useState<any>(null);
-  const [modoGrafico, setModoGrafico] = useState<'tipo' | 'categoria'>('tipo');
 
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
   // Armazena o nó do mês selecionado atualmente (com todos os seus totais e despesas)
   const [mesSelecionadoInfo, setMesSelecionadoInfo] = useState<any | null>(null);
 
-  // Controle da quantidade de meses da projeção (Default: 6 meses)
+  // Controle da quantidade de meses da projeção (Default: 3 meses)
   const [qtdMesesProjecao, setQtdMesesProjecao] = useState<number>(3);
 
   // Estados para armazenar os filtros da tabela e dos cards
@@ -76,7 +74,6 @@ export default function ProjecaoDespesaPage() {
     return str;
   };
 
-  // Retorna o padrão idêntico ao da tela de despesas: ANO - MÊS (Ex: 2026 - JUN)
   const obterNomeMesExtenso = (anoMesStr: string | number) => {
     const str = String(anoMesStr);
     if (str && str.length === 6) {
@@ -91,7 +88,6 @@ export default function ProjecaoDespesaPage() {
     return '';
   };
 
-  // Garante a formatação exata dd/mm/aaaa sem problemas de fuso horário (UTC/Local)
   const formatarDataBR = (dataStr: string) => {
     if (!dataStr) return null;
     const partes = dataStr.split('-');
@@ -222,65 +218,6 @@ export default function ProjecaoDespesaPage() {
             ],
           });
 
-          // --- GRÁFICO POR CATEGORIA (todas) ---
-          const CATEGORIA_CORES = [
-            'rgba(99, 102, 241, 0.85)',
-            'rgba(20, 184, 166, 0.85)',
-            'rgba(245, 158, 11, 0.85)',
-            'rgba(239, 68, 68, 0.85)',
-            'rgba(168, 85, 247, 0.85)',
-            'rgba(34, 197, 94, 0.85)',
-            'rgba(236, 72, 153, 0.85)',
-            'rgba(6, 182, 212, 0.85)',
-            'rgba(251, 113, 133, 0.85)',
-            'rgba(251, 191, 36, 0.85)',
-          ];
-
-          // Coletar todas as categorias únicas e somar totais no período
-          const totalPorCategoria: Record<string, number> = {};
-          listaDados.forEach((item: any) => {
-            (item.despesas || []).forEach((d: any) => {
-              if (d.categoriaNome) {
-                totalPorCategoria[d.categoriaNome] = (totalPorCategoria[d.categoriaNome] || 0) + (d.valor || 0);
-              }
-            });
-          });
-
-          // Ordem crescente: menor total na base, maior total no topo da barra empilhada
-          const categoriasUnicas = Object.keys(totalPorCategoria)
-            .sort((a, b) => totalPorCategoria[a] - totalPorCategoria[b]);
-
-          // Gerar um dataset por categoria
-          const datasetsCategoria = categoriasUnicas.map((cat, catIdx) => {
-            const data = listaDados.map((item: any) =>
-              (item.despesas || [])
-                .filter((d: any) => d.categoriaNome === cat)
-                .reduce((soma: number, d: any) => soma + (d.valor || 0), 0)
-            );
-            return {
-              label: cat,
-              data,
-              backgroundColor: CATEGORIA_CORES[catIdx % CATEGORIA_CORES.length],
-              datalabels: {
-                anchor: 'center',
-                align: 'center',
-                color: '#ffffff',
-                font: { weight: 'black', size: 10 },
-                formatter: (value: number, context: any) => {
-                  const i = context.dataIndex;
-                  const totalMes = valoresTotais[i];
-                  if (totalMes === 0 || value === 0) return '';
-                  return `${((value / totalMes) * 100).toFixed(0)}%`;
-                },
-              },
-            };
-          });
-
-          setBarDataCategoria({
-            labels: labelsFormatadas,
-            datasets: datasetsCategoria,
-          });
-
           const currentAnoMes = mesSelecionadoInfo?.anoMes;
           const aindaExiste = listaDados.find((item) => String(item.anoMes) === String(currentAnoMes));
 
@@ -293,7 +230,6 @@ export default function ProjecaoDespesaPage() {
         } else {
           setDadosApi([]);
           setBarData(null);
-          setBarDataCategoria(null);
           setMesSelecionadoInfo(null);
           setError('Nenhum dado de projeção foi retornado pelo servidor.');
         }
@@ -310,7 +246,6 @@ export default function ProjecaoDespesaPage() {
     }
   }, [token, qtdMesesProjecao]);
 
-  // Lógica de manipulação de retrocesso e avanço de meses através dos botões
   const handleRetrocederMes = () => {
     if (!mesSelecionadoInfo || dadosApi.length === 0) return;
     const indexAtual = dadosApi.findIndex((item) => String(item.anoMes) === String(mesSelecionadoInfo.anoMes));
@@ -327,27 +262,22 @@ export default function ProjecaoDespesaPage() {
     }
   };
 
-  // Verifica as extremidades da listagem para desabilitar as setas
   const isPrimeiroMes = dadosApi.length === 0 || !mesSelecionadoInfo || String(dadosApi[0].anoMes) === String(mesSelecionadoInfo.anoMes);
   const isUltimoMes = dadosApi.length === 0 || !mesSelecionadoInfo || String(dadosApi[dadosApi.length - 1].anoMes) === String(mesSelecionadoInfo.anoMes);
 
   const listaDespesasBrutas = Array.isArray(mesSelecionadoInfo?.despesas) ? mesSelecionadoInfo.despesas : [];
 
-  // Aplica os filtros de Tipo, Cartão e Categoria fixada
   const lancamentosFiltrados = listaDespesasBrutas.filter((despesa: any) => {
-    // 1. Filtro por Tipo
     let atendeTipo = true;
     if (filtroTipo === 'AVULSO') atendeTipo = !despesa.parcelado && !despesa.recorrente;
     else if (filtroTipo === 'PARCELADO') atendeTipo = !!despesa.parcelado;
     else if (filtroTipo === 'RECORRENTE') atendeTipo = !!despesa.recorrente;
 
-    // 2. Filtro por Cartão
     let atendeCartao = true;
     if (filtroCartao !== 'TODOS') {
       atendeCartao = String(despesa.cartaoId) === String(filtroCartao);
     }
 
-    // 3. Filtro por Categoria (Compara com o nome da categoria vinda do Mock/Fixos)
     let atendeCategoria = true;
     if (filtroCategoria !== 'TODOS') {
       const categoriaSelecionada = categorias.find(c => String(c.id) === String(filtroCategoria));
@@ -359,7 +289,6 @@ export default function ProjecaoDespesaPage() {
     return atendeTipo && atendeCartao && atendeCategoria;
   });
 
-  // --- CÁLCULO DINÂMICO DOS TOTAIS BASEADO NOS LANÇAMENTOS FILTRADOS ---
   const totalAvulsoFiltrado = lancamentosFiltrados
     .filter((d: any) => !d.parcelado && !d.recorrente)
     .reduce((soma: number, d: any) => soma + (d.valor || 0), 0);
@@ -382,9 +311,9 @@ export default function ProjecaoDespesaPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
 
-      {/* Cabeçalho Limpo - Apenas o título da tela */}
+      {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Projeção de Despesas</h1>
@@ -393,61 +322,33 @@ export default function ProjecaoDespesaPage() {
 
       <div className="space-y-6">
 
-        {/* Painel do Gráfico */}
+        {/* Painel do Gráfico de Barras */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm w-full">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div>
               <h2 className="text-lg font-bold text-slate-800">Despesas Futuras</h2>
               <p className="text-xs text-slate-500">
-                {modoGrafico === 'tipo'
-                  ? 'Projeção mensal segmentada por tipo de despesa com o valor total fixado no topo de cada coluna.'
-                  : 'Projeção mensal segmentada por categoria com o valor total fixado no topo de cada coluna.'}
+                Projeção mensal segmentada por tipo de despesa com o valor total fixado no topo de cada coluna.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
-              {/* Toggle: Modo do Gráfico */}
-              <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-0.5">
-                <button
-                  onClick={() => setModoGrafico('tipo')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                    modoGrafico === 'tipo'
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  Por Tipo
-                </button>
-                <button
-                  onClick={() => setModoGrafico('categoria')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                    modoGrafico === 'categoria'
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  Por Categoria
-                </button>
-              </div>
-
-              {/* Seletor de Quantidade de Meses */}
-              <div className="flex items-center gap-2">
-                <label htmlFor="filtro-meses" className="text-sm font-medium text-slate-600 whitespace-nowrap">
-                  Projeção:
-                </label>
-                <select
-                  id="filtro-meses"
-                  value={qtdMesesProjecao}
-                  onChange={(e) => setQtdMesesProjecao(Number(e.target.value))}
-                  className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-xl focus:ring-orange-500 focus:border-orange-500 block p-2 font-semibold cursor-pointer"
-                >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((mes) => (
-                    <option key={mes} value={mes}>
-                      {mes} {mes === 1 ? 'mês' : 'meses'}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Seletor de Quantidade de Meses */}
+            <div className="flex items-center gap-2 self-start sm:self-center">
+              <label htmlFor="filtro-meses" className="text-sm font-medium text-slate-600 whitespace-nowrap">
+                Projeção:
+              </label>
+              <select
+                id="filtro-meses"
+                value={qtdMesesProjecao}
+                onChange={(e) => setQtdMesesProjecao(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-xl focus:ring-orange-500 focus:border-orange-500 block p-2 font-semibold cursor-pointer"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((mes) => (
+                  <option key={mes} value={mes}>
+                    {mes} {mes === 1 ? 'mês' : 'meses'}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -459,9 +360,9 @@ export default function ProjecaoDespesaPage() {
               </div>
             ) : error ? (
               <div className="text-sm text-rose-500 text-center px-4">{error}</div>
-            ) : (modoGrafico === 'tipo' ? barData : barDataCategoria) ? (
+            ) : barData ? (
               <Bar
-                data={modoGrafico === 'tipo' ? barData : barDataCategoria}
+                data={barData}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
@@ -555,15 +456,15 @@ export default function ProjecaoDespesaPage() {
         {!loading && !error && mesSelecionadoInfo && (
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
 
-            {/* Cabeçalho Unificado - Filtro e Mês Referência (Formato: 2026 - JUN) */}
+            {/* Cabeçalho Unificado */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2 text-slate-800 font-bold text-sm uppercase tracking-wider">
                 <SlidersHorizontal size={18} className="text-slate-500" />
                 <span>Filtros</span>
               </div>
 
-              {/* Componente de Navegação de Mês alinhado na direita do cabeçalho */}
-              <div className="flex items-center justify-between border border border-slate-200/80 bg-white rounded-lg h-9 px-2 shadow-sm min-w-[140px]">
+              {/* Componente de Navegação de Mês */}
+              <div className="flex items-center justify-between border border-slate-200/80 bg-white rounded-lg h-9 px-2 shadow-sm min-w-[140px]">
                 <button
                   onClick={handleRetrocederMes}
                   disabled={isPrimeiroMes}
@@ -592,9 +493,8 @@ export default function ProjecaoDespesaPage() {
               </div>
             </div>
 
-            {/* Grid apenas com os 3 Combos Restantes */}
+            {/* Combos de Filtro */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Filtro: Tipo de Despesa */}
               <div className="flex flex-col gap-1 w-full">
                 <label htmlFor="combo-tipo" className="font-bold text-slate-500 uppercase tracking-wide text-[10px]">
                   Tipo de Despesa
@@ -612,7 +512,6 @@ export default function ProjecaoDespesaPage() {
                 </select>
               </div>
 
-              {/* Filtro: Categoria */}
               <div className="flex flex-col gap-1 w-full">
                 <label htmlFor="combo-categoria" className="font-bold text-slate-500 uppercase tracking-wide text-[10px]">
                   Categoria
@@ -632,7 +531,6 @@ export default function ProjecaoDespesaPage() {
                 </select>
               </div>
 
-              {/* Filtro 2: Cartão de Crédito */}
               <div className="flex flex-col gap-1 w-full">
                 <label htmlFor="combo-cartao" className="font-bold text-slate-500 uppercase tracking-wide text-[10px]">
                   Cartão de Crédito
@@ -651,9 +549,6 @@ export default function ProjecaoDespesaPage() {
                   ))}
                 </select>
               </div>
-
-
-
             </div>
           </div>
         )}
@@ -705,7 +600,7 @@ export default function ProjecaoDespesaPage() {
           </div>
         )}
 
-        {/* ESTRUTURA DA TABELA PADRONIZADA - Arredondada no topo e com rodapé de contagem */}
+        {/* ESTRUTURA DA TABELA PADRONIZADA */}
         {!loading && !error && mesSelecionadoInfo && (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -805,7 +700,7 @@ export default function ProjecaoDespesaPage() {
               )}
             </div>
 
-            {/* RODAPÉ PADRONIZADO - Exibindo a contagem total de registros filtrados */}
+            {/* Rodapé */}
             <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-center">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Exibindo {lancamentosFiltrados.length} {lancamentosFiltrados.length === 1 ? 'lançamento' : 'lançamentos'}

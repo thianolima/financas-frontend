@@ -216,8 +216,8 @@ export default function CartoesPage() {
     setForm(f => ({ ...f, valorLimite: formatted }));
   };
 
-  const handleVerFatura = (cartao: CartaoBackend) => {
-    showToast(`Abrindo fatura de ${cartao.nome}...`);
+  const handleVerDespesas = (cartao: CartaoBackend) => {
+    showToast(`Abrindo despesas de ${cartao.nome}...`);
   };
 
   return (
@@ -245,7 +245,7 @@ export default function CartoesPage() {
         </button>
       </div>
 
-      {/* Grid de Cartões */}
+      {/* Grid de Cartões (Volta para 4 colunas em telas maiores) */}
       {loading ? (
         <div className="text-center py-20 text-slate-500 flex flex-col items-center gap-3 justify-center">
           <RefreshCw size={28} className="animate-spin text-orange-500" />
@@ -311,14 +311,14 @@ export default function CartoesPage() {
 
                 {/* Barra de Ações do Cartão */}
                 <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-3 flex items-center justify-between gap-1.5">
-                  <div className="flex items-center gap-1.5 overflow-x-auto">
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => handleVerFatura(c)}
-                      title="Ver Fatura"
+                      onClick={() => handleVerDespesas(c)}
+                      title="Despesas"
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 transition-colors cursor-pointer text-xs font-bold whitespace-nowrap"
                     >
                       <ReceiptText size={13} />
-                      Ver Fatura
+                      Despesas
                     </button>
 
                     <button
@@ -326,12 +326,12 @@ export default function CartoesPage() {
                       disabled={isAdicional}
                       title={isAdicional ? 'Indisponível para cartões adicionais' : 'Importar Fatura'}
                       className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${isAdicional
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
-                          : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer'
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer'
                         }`}
                     >
                       <Upload size={13} />
-                      Importar
+                      Imp. Fatura
                     </button>
                   </div>
 
