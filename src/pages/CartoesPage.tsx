@@ -65,6 +65,11 @@ const FORM_VAZIO = {
 export default function CartoesPage() {
   const token = localStorage.getItem('@financeiro:token') || '';
 
+  const getAnoMesAtual = () => {
+    const now = new Date();
+    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  };
+
   const [cartoes, setCartoes] = useState<CartaoBackend[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +79,11 @@ export default function CartoesPage() {
   const [confirmacaoExcluir, setConfirmacaoExcluir] = useState<CartaoBackend | null>(null);
   const [excluindo, setExcluindo] = useState<boolean>(false);
   const [modalFaturaCartao, setModalFaturaCartao] = useState<CartaoBackend | null>(null);
+  const [faturaArquivo, setFaturaArquivo] = useState<File | null>(null);
+  const [faturaAnoMes, setFaturaAnoMes] = useState<string>(() => getAnoMesAtual());
+  const [faturaErrors, setFaturaErrors] = useState<Record<string, string>>({});
+  const [importandoFatura, setImportandoFatura] = useState<boolean>(false);
+  const [faturaUploadResponse, setFaturaUploadResponse] = useState<{ url: string } | null>(null);
 
   const [form, setForm] = useState(FORM_VAZIO);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -220,6 +230,126 @@ export default function CartoesPage() {
     showToast(`Abrindo despesas de ${cartao.nome}...`);
   };
 
+  const abrirModalImportacaoFatura = (cartao: CartaoBackend) => {
+    setFaturaArquivo(null);
+    setFaturaAnoMes(getAnoMesAtual());
+    setFaturaErrors({});
+    setFaturaUploadResponse(null);
+    setModalFaturaCartao(cartao);
+  };
+
+  const fecharModalImportacaoFatura = () => {
+    if (importandoFatura) return;
+    setModalFaturaCartao(null);
+    setFaturaArquivo(null);
+    setFaturaAnoMes(getAnoMesAtual());
+    setFaturaErrors({});
+    setFaturaUploadResponse(null);
+  };
+
+  const validarFormularioFatura = () => {
+    const e: Record<string, string> = {};
+
+    if (!faturaArquivo) {
+      e.arquivo = 'Selecione uma planilha .xlsx.';
+    } else if (!faturaArquivo.name.toLowerCase().endsWith('.xlsx')) {
+      e.arquivo = 'Apenas arquivo .xlsx e permitido.';
+    }
+
+    if (!faturaAnoMes.trim()) {
+      e.anoMes = 'Informe o ano/mes no formato YYYYMM.';
+    } else {
+      const anoMes = faturaAnoMes.replace(/\D/g, '').slice(0, 6);
+      if (!/^\d{6}$/.test(anoMes)) {
+        e.anoMes = 'Ano/mes deve conter 6 digitos (YYYYMM).';
+      } else {
+        const mes = Number(anoMes.slice(4, 6));
+        if (mes < 1 || mes > 12) {
+          e.anoMes = 'Mes invalido. Use valores entre 01 e 12.';
+        }
+      }
+    }
+
+    setFaturaErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleAnoMesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valorLimpo = e.target.value.replace(/\D/g, '').slice(0, 6);
+    setFaturaAnoMes(valorLimpo);
+    setFaturaErrors(prev => ({ ...prev, anoMes: '' }));
+  };
+
+  const handleArquivoFaturaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0] || null;
+    setFaturaArquivo(arquivo);
+    setFaturaErrors(prev => ({ ...prev, arquivo: '' }));
+  };
+
+  const handleImportarFatura = async () => {
+    if (!modalFaturaCartao) return;
+
+    if (!token) {
+      showToast('Token de autenticacao nao encontrado.');
+      return;
+    }
+
+    if (!validarFormularioFatura() || !faturaArquivo) return;
+
+    try {
+      setImportandoFatura(true);
+
+      const response = await axios.post(
+        `/api/cartao/${modalFaturaCartao.id}/fatura/upload`,
+        {
+          anoMes: faturaAnoMes,
+          nomeArquivo: faturaArquivo.name,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const payload = response.data as { url?: string };
+      if (!payload?.url) {
+        throw new Error('URL de upload nao retornada pelo backend.');
+      }
+
+      setFaturaUploadResponse({ url: payload.url });
+
+      const uploadUrl = import.meta.env.DEV
+        ? (() => {
+          const parsed = new URL(payload.url);
+          return `/s3-upload${parsed.pathname}${parsed.search}`;
+        })()
+        : payload.url;
+
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/csv',
+        },
+        body: faturaArquivo,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Falha ao enviar arquivo para o S3.');
+      }
+
+      showToast('Upload da fatura realizado com sucesso!');
+      setModalFaturaCartao(null);
+      setFaturaArquivo(null);
+      setFaturaAnoMes(getAnoMesAtual());
+      setFaturaErrors({});
+      setFaturaUploadResponse(null);
+    } catch (err: any) {
+      console.error('Erro ao importar fatura:', err);
+      showToast(err.response?.data?.message || err.message || 'Erro ao importar fatura.');
+    } finally {
+      setImportandoFatura(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
 
@@ -322,7 +452,7 @@ export default function CartoesPage() {
                     </button>
 
                     <button
-                      onClick={() => !isAdicional && setModalFaturaCartao(c)}
+                      onClick={() => !isAdicional && abrirModalImportacaoFatura(c)}
                       disabled={isAdicional}
                       title={isAdicional ? 'Indisponível para cartões adicionais' : 'Importar Fatura'}
                       className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${isAdicional
@@ -561,19 +691,80 @@ export default function CartoesPage() {
                 </div>
                 <h3 className="text-sm font-black uppercase text-slate-800 tracking-wider">Importar Fatura</h3>
               </div>
-              <button onClick={() => setModalFaturaCartao(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer">
+              <button
+                onClick={fecharModalImportacaoFatura}
+                disabled={importandoFatura}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer disabled:opacity-50"
+              >
                 <X size={18} />
               </button>
             </div>
-            <div className="flex flex-col items-center gap-3 py-4">
-              <div className="p-4 bg-emerald-50 rounded-full">
-                <Upload size={32} className="text-emerald-500" />
+
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex flex-col gap-1">
+                <label className="font-bold text-slate-500 uppercase tracking-wide text-[10px]">
+                  Arquivo da Fatura (.xlsx) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx"
+                  onChange={handleArquivoFaturaChange}
+                  disabled={importandoFatura}
+                  className="p-2.5 border border-slate-200 bg-slate-50 rounded-xl outline-none text-xs text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-emerald-700 hover:file:bg-emerald-200"
+                />
+                {faturaArquivo && (
+                  <p className="text-[11px] text-slate-500">Arquivo selecionado: <span className="font-semibold text-slate-700">{faturaArquivo.name}</span></p>
+                )}
+                {faturaErrors.arquivo && <span className="text-rose-500 text-[10px] font-semibold">{faturaErrors.arquivo}</span>}
               </div>
-              <p className="text-sm font-semibold text-slate-700 text-center">{modalFaturaCartao.nome}</p>
-              <p className="text-xs text-slate-400 text-center">O fluxo de importação de fatura será definido em breve.</p>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-bold text-slate-500 uppercase tracking-wide text-[10px]">
+                  Ano/Mes (YYYYMM) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={faturaAnoMes}
+                  onChange={handleAnoMesChange}
+                  placeholder="202607"
+                  disabled={importandoFatura}
+                  className={`p-2.5 border rounded-xl outline-none font-semibold text-slate-800 bg-slate-50 focus:bg-white transition-colors text-sm ${faturaErrors.anoMes ? 'border-rose-400' : 'border-slate-200 focus:border-emerald-400'}`}
+                />
+                {faturaErrors.anoMes && <span className="text-rose-500 text-[10px] font-semibold">{faturaErrors.anoMes}</span>}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] text-slate-500">Cartao selecionado</p>
+                <p className="text-sm font-semibold text-slate-700">{modalFaturaCartao.nome}</p>
+                {faturaUploadResponse?.url && (
+                  <p className="text-[10px] text-emerald-700 mt-1">URL de upload gerada para esta tentativa.</p>
+                )}
+              </div>
             </div>
+
             <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
-              <button onClick={() => setModalFaturaCartao(null)} className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer">Fechar</button>
+              <button
+                onClick={fecharModalImportacaoFatura}
+                disabled={importandoFatura}
+                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleImportarFatura}
+                disabled={importandoFatura}
+                className="px-5 py-2 text-xs font-bold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+              >
+                {importandoFatura ? (
+                  <>
+                    <RefreshCw size={12} className="animate-spin" /> Enviando...
+                  </>
+                ) : (
+                  'Importar'
+                )}
+              </button>
             </div>
           </div>
         </div>

@@ -16,6 +16,14 @@ export default defineConfig({
         // Assim, '/api/tokens' vira apenas '/tokens' quando chegar na AWS
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      // Proxy apenas para desenvolvimento local do upload pre-signed no S3.
+      // Evita CORS no browser ao encaminhar o PUT via servidor do Vite.
+      '/s3-upload': {
+        target: 'https://financas-faturas-dev.s3.amazonaws.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/s3-upload/, ''),
+      },
     },
   },
 })
