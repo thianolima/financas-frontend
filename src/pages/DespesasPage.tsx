@@ -37,6 +37,16 @@ interface Cartao {
   nome: string;
 }
 
+interface DespesasPreFiltroNavegacao {
+  cartaoId: number;
+  anomes: string;
+}
+
+interface DespesasPageProps {
+  preFiltroNavegacao?: DespesasPreFiltroNavegacao | null;
+  onConsumirPreFiltroNavegacao?: () => void;
+}
+
 // Mapeamento dinâmico do campo cartaoCor para as cores do ícone na tabela
 const getCartaoStyles = (cor?: string | null) => {
   if (!cor) {
@@ -75,7 +85,10 @@ const getCartaoStyles = (cor?: string | null) => {
   }
 };
 
-export default function DespesasPage() {
+export default function DespesasPage({
+  preFiltroNavegacao,
+  onConsumirPreFiltroNavegacao,
+}: DespesasPageProps) {
   const token = localStorage.getItem('@financeiro:token') || '';
 
   // Estados dos Filtros
@@ -105,6 +118,7 @@ export default function DespesasPage() {
   const [totalPaginas, setTotalPaginas] = useState<number>(1);
   const [totalItens, setTotalItens] = useState<number>(0);
   const itensPorPagina = 50;
+  const [filtrosIniciaisProntos, setFiltrosIniciaisProntos] = useState<boolean>(false);
 
   // Estados de Interface e CRUD
   const [itensSelecionados, setItensSelecionados] = useState<number[]>([]);
@@ -147,6 +161,31 @@ export default function DespesasPage() {
       return () => clearTimeout(timer);
     }
   }, [toastMessage]);
+
+  useEffect(() => {
+    if (!preFiltroNavegacao) {
+      setFiltrosIniciaisProntos(true);
+      return;
+    }
+
+    const anomesLimpo = preFiltroNavegacao.anomes.replace(/\D/g, '').slice(0, 6);
+    if (/^\d{6}$/.test(anomesLimpo)) {
+      const ano = Number(anomesLimpo.slice(0, 4));
+      const mes = Number(anomesLimpo.slice(4, 6));
+
+      if (mes >= 1 && mes <= 12) {
+        setAnoAtual(ano);
+        setMesAtual(mes);
+      }
+    }
+
+    setFiltroTipo('TODOS');
+    setFiltroCategoria('TODOS');
+    setFiltroCartao(String(preFiltroNavegacao.cartaoId));
+    setPaginaAtual(1);
+    setFiltrosIniciaisProntos(true);
+    onConsumirPreFiltroNavegacao?.();
+  }, [preFiltroNavegacao, onConsumirPreFiltroNavegacao]);
 
   // Busca lista de cartões do usuário
   useEffect(() => {
@@ -225,8 +264,9 @@ export default function DespesasPage() {
   }, [token, anoAtual, mesAtual, paginaAtual, filtroTipo, filtroCategoria, filtroCartao, itensPorPagina]);
 
   useEffect(() => {
+    if (!filtrosIniciaisProntos) return;
     fetchDespesas();
-  }, [fetchDespesas]);
+  }, [fetchDespesas, filtrosIniciaisProntos]);
 
   const listaCategorias = categorias.length > 0
     ? categorias

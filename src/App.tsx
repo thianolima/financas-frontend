@@ -16,6 +16,11 @@ interface Notificacao {
   mensagem: string;
 }
 
+interface DespesasPreFiltroNavegacao {
+  cartaoId: number;
+  anomes: string;
+}
+
 function formatarDataHora(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString('pt-BR', {
@@ -54,6 +59,7 @@ function isTokenExpirado(token: string): boolean {
 function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('@financeiro:token'));
   const [activePage, setActivePage] = useState<string>('dashboard');
+  const [despesasPreFiltroNavegacao, setDespesasPreFiltroNavegacao] = useState<DespesasPreFiltroNavegacao | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [bellOpen, setBellOpen] = useState<boolean>(false);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
@@ -210,6 +216,11 @@ function App() {
     }
   };
 
+  const handleAbrirDespesasPorCartao = useCallback((cartaoId: number, anomes: string) => {
+    setDespesasPreFiltroNavegacao({ cartaoId, anomes });
+    setActivePage('despesas');
+  }, []);
+
   const hoje = notificacoes.filter(n => getGrupo(n.dataHoraCriacao) === 'hoje');
   const semana = notificacoes.filter(n => getGrupo(n.dataHoraCriacao) === 'semana');
   const anteriores = notificacoes.filter(n => getGrupo(n.dataHoraCriacao) === 'anteriores');
@@ -217,8 +228,14 @@ function App() {
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard': return <Dashboard />;
-      case 'despesas': return <DespesasPage />;
-      case 'cartoes': return <CartoesPage />;
+      case 'despesas':
+        return (
+          <DespesasPage
+            preFiltroNavegacao={despesasPreFiltroNavegacao}
+            onConsumirPreFiltroNavegacao={() => setDespesasPreFiltroNavegacao(null)}
+          />
+        );
+      case 'cartoes': return <CartoesPage onAbrirDespesasPorCartao={handleAbrirDespesasPorCartao} />;
       case 'projecao': return <ProjecaoDespesaPage />;
       case 'profile': return <Profile />;
       default: return <Dashboard />;

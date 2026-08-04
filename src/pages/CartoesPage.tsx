@@ -24,6 +24,10 @@ interface CartaoBackend {
   cartaoAdicional?: boolean;
 }
 
+interface CartoesPageProps {
+  onAbrirDespesasPorCartao?: (cartaoId: number, anomes: string) => void;
+}
+
 // Mapeamento aceitando chaves em Português e enums em Inglês
 const GRADIENTS: Record<string, { label: string; class: string; dot: string; apiKey: string }> = {
   AZUL: { label: 'Azul Imperial', class: 'from-[#1e3a8a] to-[#3b82f6]', dot: 'bg-blue-600', apiKey: 'BLUE' },
@@ -62,7 +66,7 @@ const FORM_VAZIO = {
   valorLimite: 'R$ 0,00'
 };
 
-export default function CartoesPage() {
+export default function CartoesPage({ onAbrirDespesasPorCartao }: CartoesPageProps) {
   const token = localStorage.getItem('@financeiro:token') || '';
 
   const getAnoMesAtual = () => {
@@ -227,7 +231,12 @@ export default function CartoesPage() {
   };
 
   const handleVerDespesas = (cartao: CartaoBackend) => {
-    showToast(`Abrindo despesas de ${cartao.nome}...`);
+    if (!onAbrirDespesasPorCartao) {
+      showToast(`Nao foi possivel abrir despesas de ${cartao.nome}.`);
+      return;
+    }
+
+    onAbrirDespesasPorCartao(cartao.id, getAnoMesAtual());
   };
 
   const abrirModalImportacaoFatura = (cartao: CartaoBackend) => {
