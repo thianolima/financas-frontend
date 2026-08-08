@@ -43,18 +43,79 @@ interface Categoria {
   nome: string;
 }
 
+interface ProjecaoDespesa {
+  descricao: string;
+  valor: number;
+  observacao: string | null;
+  recorrente: boolean;
+  parcelado: boolean;
+  avulso: boolean;
+  cartaoId: number | null;
+  cartaoNome: string | null;
+  cartaoCor?: string | null;
+  parcelaAtual: number | null;
+  totalParcelas: number | null;
+  dataDespesa: string | null;
+  dataVencimento: string | null;
+  categoriaId: number | null;
+  categoriaNome: string | null;
+  tags?: string[];
+}
+
+interface ProjecaoMesInfo {
+  anoMes: string | number;
+  despesas?: ProjecaoDespesa[];
+}
+
+const getCartaoStyles = (cor?: string | null) => {
+  if (!cor) {
+    return 'bg-orange-50 text-orange-500 border-orange-100';
+  }
+
+  const key = cor.toUpperCase().trim();
+
+  switch (key) {
+    case 'AZUL':
+    case 'BLUE':
+      return 'bg-blue-50 text-blue-600 border-blue-200';
+    case 'PRETO':
+    case 'BLACK':
+      return 'bg-slate-100 text-slate-800 border-slate-300';
+    case 'ROXO':
+    case 'PURPLE':
+      return 'bg-purple-50 text-purple-600 border-purple-200';
+    case 'VERDE':
+    case 'GREEN':
+      return 'bg-emerald-50 text-emerald-600 border-emerald-200';
+    case 'VERMELHO':
+    case 'RED':
+      return 'bg-rose-50 text-rose-600 border-rose-200';
+    case 'LARANJA':
+    case 'ORANGE':
+      return 'bg-orange-50 text-orange-600 border-orange-200';
+    case 'ROSA':
+    case 'PINK':
+      return 'bg-pink-50 text-pink-600 border-pink-200';
+    case 'PRATA':
+    case 'SILVER':
+      return 'bg-slate-100 text-slate-500 border-slate-200';
+    default:
+      return 'bg-orange-50 text-orange-500 border-orange-100';
+  }
+};
+
 export default function ProjecaoDespesaPage() {
   const token = localStorage.getItem('@financeiro:token') || '';
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [dadosApi, setDadosApi] = useState<any[]>([]);
+  const [dadosApi, setDadosApi] = useState<ProjecaoMesInfo[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [barData, setBarData] = useState<any>(null);
 
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
   // Armazena o nó do mês selecionado atualmente (com todos os seus totais e despesas)
-  const [mesSelecionadoInfo, setMesSelecionadoInfo] = useState<any | null>(null);
+  const [mesSelecionadoInfo, setMesSelecionadoInfo] = useState<ProjecaoMesInfo | null>(null);
 
   // Controle da quantidade de meses da projeção (Default: 3 meses)
   const [qtdMesesProjecao, setQtdMesesProjecao] = useState<number>(3);
@@ -267,7 +328,7 @@ export default function ProjecaoDespesaPage() {
 
   const listaDespesasBrutas = Array.isArray(mesSelecionadoInfo?.despesas) ? mesSelecionadoInfo.despesas : [];
 
-  const lancamentosFiltrados = listaDespesasBrutas.filter((despesa: any) => {
+  const lancamentosFiltrados = listaDespesasBrutas.filter((despesa) => {
     let atendeTipo = true;
     if (filtroTipo === 'AVULSO') atendeTipo = !despesa.parcelado && !despesa.recorrente;
     else if (filtroTipo === 'PARCELADO') atendeTipo = !!despesa.parcelado;
@@ -290,18 +351,18 @@ export default function ProjecaoDespesaPage() {
   });
 
   const totalAvulsoFiltrado = lancamentosFiltrados
-    .filter((d: any) => !d.parcelado && !d.recorrente)
-    .reduce((soma: number, d: any) => soma + (d.valor || 0), 0);
+    .filter((d) => !d.parcelado && !d.recorrente)
+    .reduce((soma, d) => soma + (d.valor || 0), 0);
 
   const totalParceladoFiltrado = lancamentosFiltrados
-    .filter((d: any) => !!d.parcelado)
-    .reduce((soma: number, d: any) => soma + (d.valor || 0), 0);
+    .filter((d) => !!d.parcelado)
+    .reduce((soma, d) => soma + (d.valor || 0), 0);
 
   const totalRecorrenteFiltrado = lancamentosFiltrados
-    .filter((d: any) => !!d.recorrente)
-    .reduce((soma: number, d: any) => soma + (d.valor || 0), 0);
+    .filter((d) => !!d.recorrente)
+    .reduce((soma, d) => soma + (d.valor || 0), 0);
 
-  const totalGeralFiltrado = lancamentosFiltrados.reduce((soma: number, d: any) => soma + (d.valor || 0), 0);
+  const totalGeralFiltrado = lancamentosFiltrados.reduce((soma, d) => soma + (d.valor || 0), 0);
 
   const formatarMoeda = (valor: number) => {
     return valor.toLocaleString('pt-BR', {
@@ -608,22 +669,28 @@ export default function ProjecaoDespesaPage() {
                 <table className="w-full text-sm text-left text-slate-600 table-fixed">
                   <thead className="text-xs uppercase bg-slate-50 text-slate-500 border-b border-slate-200">
                     <tr>
-                      <th scope="col" className="w-[35%] px-4 py-4">Descrição</th>
-                      <th scope="col" className="w-[15%] px-4 py-4 text-center">Tipo</th>
-                      <th scope="col" className="w-[20%] px-4 py-4 text-center">Categoria</th>
-                      <th scope="col" className="w-[13%] px-4 py-4 text-center">Vencimento</th>
-                      <th scope="col" className="w-[17%] px-4 py-4 text-right">Valor</th>
+                      <th scope="col" className="w-[35%] px-4 py-3">Descrição</th>
+                      <th scope="col" className="w-[15%] px-4 py-3 text-center">Tipo</th>
+                      <th scope="col" className="w-[20%] px-4 py-3 text-center">Categoria</th>
+                      <th scope="col" className="w-[13%] px-4 py-3 text-center">Vencimento</th>
+                      <th scope="col" className="w-[17%] px-4 py-3 text-right">Valor</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {lancamentosFiltrados.map((despesa: any, idx: number) => (
+                    {lancamentosFiltrados.map((despesa, idx: number) => {
+                      const cartaoStyleClass = getCartaoStyles(despesa.cartaoCor);
+                      const tags = Array.isArray(despesa.tags)
+                        ? despesa.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
+                        : [];
+
+                      return (
                       <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
 
                         {/* Descrição */}
-                        <td className="px-4 py-3.5 font-semibold text-slate-900 truncate">
-                          <div className="flex items-center gap-3">
+                        <td className="px-4 py-2.5 font-semibold text-slate-900 truncate">
+                          <div className="flex items-center gap-2.5">
                             {despesa.cartaoId ? (
-                              <div className="p-1.5 bg-orange-50 text-orange-500 border border-orange-100 rounded-lg shrink-0" title={despesa.cartaoNome ? `Cartão: ${despesa.cartaoNome}` : 'Cartão de Crédito'}>
+                              <div className={`p-1.5 border rounded-lg shrink-0 transition-colors ${cartaoStyleClass}`} title={despesa.cartaoNome ? `Cartão: ${despesa.cartaoNome}` : 'Cartão de Crédito'}>
                                 <CreditCard size={14} />
                               </div>
                             ) : (
@@ -644,7 +711,7 @@ export default function ProjecaoDespesaPage() {
                         </td>
 
                         {/* Tipo */}
-                        <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                        <td className="px-4 py-2.5 text-center whitespace-nowrap">
                           <div className="inline-flex flex-col items-center justify-center vertical-middle">
                             {despesa.parcelado && (
                               <>
@@ -672,12 +739,28 @@ export default function ProjecaoDespesaPage() {
                         </td>
 
                         {/* Categoria */}
-                        <td className="px-4 py-3.5 whitespace-nowrap text-xs font-semibold text-slate-700 text-center truncate">
-                          {despesa.categoriaNome || <span className="text-slate-300">-</span>}
+                        <td className="px-4 py-2.5 text-center">
+                          <div className="flex flex-col items-center justify-center gap-1">
+                            <span className="block max-w-full truncate text-xs font-semibold text-slate-700">
+                              {despesa.categoriaNome || <span className="text-slate-300">-</span>}
+                            </span>
+
+                            {tags.length > 0 && (
+                              <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                                <span
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-sky-50 text-sky-700 border border-sky-100 max-w-20 truncate"
+                                  title={tags[0]}
+                                >
+                                  {tags[0]}
+                                </span>
+                                {tags.length > 1 && <span className="text-[10px] font-bold text-sky-600">+{tags.length - 1}</span>}
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         {/* Vencimento */}
-                        <td className="px-4 py-3.5 whitespace-nowrap text-xs font-medium text-slate-500 text-center">
+                        <td className="px-4 py-2.5 whitespace-nowrap text-xs font-medium text-slate-500 text-center">
                           {despesa.dataVencimento ? (
                             formatarDataBR(despesa.dataVencimento)
                           ) : (
@@ -686,11 +769,12 @@ export default function ProjecaoDespesaPage() {
                         </td>
 
                         {/* Valor */}
-                        <td className="px-4 py-3.5 text-right font-bold text-slate-900 whitespace-nowrap">
+                        <td className="px-4 py-2.5 text-right font-bold text-slate-900 whitespace-nowrap">
                           R$ {Number(despesa.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               ) : (

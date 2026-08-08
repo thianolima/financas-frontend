@@ -3,6 +3,9 @@ import axios from 'axios';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
   SlidersHorizontal,
   Trash2,
   Edit2,
@@ -30,9 +33,15 @@ interface Despesa {
   recorrente: boolean;
   avulso: boolean;
   parcelado: boolean;
+  tags?: string[];
 }
 
 interface Cartao {
+  id: number;
+  nome: string;
+}
+
+interface TagDisponivel {
   id: number;
   nome: string;
 }
@@ -104,6 +113,7 @@ export default function DespesasPage({
   const [despesas, setDespesas] = useState<Despesa[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [categorias, setCategorias] = useState<{ id: number; nome: string }[]>([]);
+  const [tagsDisponiveis, setTagsDisponiveis] = useState<TagDisponivel[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -144,6 +154,9 @@ export default function DespesasPage({
   const [formParcelaAtual, setFormParcelaAtual] = useState<string>('0');
   const [formTotalParcelas, setFormTotalParcelas] = useState<string>('0');
   const [formObservacao, setFormObservacao] = useState<string>('');
+  const [formTags, setFormTags] = useState<string[]>([]);
+  const [formTagLimiteAtingido, setFormTagLimiteAtingido] = useState<boolean>(false);
+  const [formTagsExpandido, setFormTagsExpandido] = useState<boolean>(false);
 
   // ESTADOS DO NOVO MODAL: NOVA REGRA AUTOMÁTICA
   const [modalRegraAberto, setModalRegraAberto] = useState<boolean>(false);
@@ -161,6 +174,10 @@ export default function DespesasPage({
       return () => clearTimeout(timer);
     }
   }, [toastMessage]);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+  };
 
   useEffect(() => {
     if (!preFiltroNavegacao) {
@@ -219,6 +236,32 @@ export default function DespesasPage({
       }
     }
     if (token) fetchCategorias();
+  }, [token]);
+
+  // Busca tags cadastradas
+  useEffect(() => {
+    async function fetchTags() {
+      try {
+        const response = await axios.get('/api/tags', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (Array.isArray(response.data)) {
+          const tagsNormalizadas = response.data
+            .filter((tag): tag is TagDisponivel => {
+              return Boolean(tag && typeof tag.id === 'number' && typeof tag.nome === 'string');
+            })
+            .map((tag) => ({ id: tag.id, nome: tag.nome.trim() }))
+            .filter((tag) => tag.nome.length > 0);
+
+          setTagsDisponiveis(tagsNormalizadas);
+        }
+      } catch (err) {
+        console.warn('Endpoint /api/tags indisponível.', err);
+      }
+    }
+
+    if (token) fetchTags();
   }, [token]);
 
   // Função de busca com paginação e filtros estáveis
@@ -311,6 +354,23 @@ export default function DespesasPage({
     setFormValor(formatted);
   };
 
+  const handleToggleTag = (tag: string) => {
+    setFormTags((prev) => {
+      if (prev.includes(tag)) {
+        setFormTagLimiteAtingido(false);
+        return prev.filter((item) => item !== tag);
+      }
+
+      if (prev.length >= 5) {
+        setFormTagLimiteAtingido(true);
+        return prev;
+      }
+
+      setFormTagLimiteAtingido(false);
+      return [...prev, tag];
+    });
+  };
+
   const handleNovaDespesa = () => {
     setDespesaParaEditar(null);
     setFormDescricao('');
@@ -323,6 +383,9 @@ export default function DespesasPage({
     setFormParcelaAtual('0');
     setFormTotalParcelas('0');
     setFormObservacao('');
+    setFormTags([]);
+    setFormTagLimiteAtingido(false);
+    setFormTagsExpandido(false);
     setModalAberto(true);
   };
 
@@ -338,6 +401,9 @@ export default function DespesasPage({
     setFormParcelaAtual(despesa.parcelaAtual?.toString() || '0');
     setFormTotalParcelas(despesa.totalParcelas?.toString() || '0');
     setFormObservacao(despesa.observacao || '');
+    setFormTags(Array.isArray(despesa.tags) ? despesa.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0).slice(0, 5).map((tag) => tag.trim()) : []);
+    setFormTagLimiteAtingido(false);
+    setFormTagsExpandido(false);
     setModalAberto(true);
   };
 
@@ -379,18 +445,24 @@ export default function DespesasPage({
 
       if (response.status === 200 || response.status === 201) {
         setModalRegraAberto(false);
+        showToast('Regra de categorizacao criada com sucesso!');
       } else {
-        setToastMessage('Erro ao salvar a regra.');
+        showToast('Erro ao salvar a regra.');
       }
     } catch (err: any) {
       console.error('Erro ao salvar regra:', err);
-      setToastMessage(err.response?.data?.message || 'Erro ao salvar a regra.');
+      showToast(err.response?.data?.message || 'Erro ao salvar a regra.');
     }
   };
 
   const handleSalvar = async () => {
     const valorLimpo = formValor.replace(/[^\d,]/g, '').replace(',', '.');
     const valorFinal = parseFloat(valorLimpo);
+    const tagsSelecionadas = formTags
+      .filter((tag) => typeof tag === 'string')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0)
+      .slice(0, 5);
 
     const payload = {
       cartaoId: formCartao ? Number(formCartao) : null,
@@ -403,6 +475,7 @@ export default function DespesasPage({
       valor: valorFinal,
       observacao: formObservacao || null,
       recorrente: formTipo === 'RECORRENTE',
+      tags: tagsSelecionadas,
     };
 
     try {
@@ -419,13 +492,43 @@ export default function DespesasPage({
       if (response.status === 200 || response.status === 201) {
         setModalAberto(false);
         if (!despesaParaEditar) setPaginaAtual(1);
+        showToast(despesaParaEditar ? 'Despesa alterada com sucesso!' : 'Despesa criada com sucesso!');
         fetchDespesas();
       } else {
-        setToastMessage('Erro ao salvar');
+        showToast('Erro ao salvar a despesa.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setToastMessage('Erro ao salvar');
+      showToast(err.response?.data?.message || 'Erro ao salvar a despesa.');
+    }
+  };
+
+  const handleExcluirDespesa = async (despesa: Despesa) => {
+    const confirmou = window.confirm('Deseja realmente excluir esta despesa?');
+
+    if (!confirmou) {
+      return;
+    }
+
+    try {
+      const response = await axios.delete(`/api/despesas/${despesa.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.status === 200 || response.status === 204) {
+        showToast('Despesa excluida com sucesso!');
+
+        if (despesas.length === 1 && paginaAtual > 1) {
+          setPaginaAtual(prev => prev - 1);
+        } else {
+          fetchDespesas();
+        }
+      } else {
+        showToast('Erro ao excluir a despesa.');
+      }
+    } catch (err: any) {
+      console.error('Erro ao excluir despesa:', err);
+      showToast(err.response?.data?.message || 'Erro ao excluir a despesa.');
     }
   };
 
@@ -458,6 +561,13 @@ export default function DespesasPage({
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-[100] bg-[#091522] text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 border border-slate-700">
+          <ShieldCheck size={16} className="text-emerald-400" />
+          {toastMessage}
+        </div>
+      )}
+
       {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -597,29 +707,32 @@ export default function DespesasPage({
             <table className="w-full text-sm text-left text-slate-600 table-fixed">
               <thead className="text-xs uppercase bg-slate-50 text-slate-500 border-b border-slate-200">
                 <tr>
-                  <th scope="col" className="w-[5%] px-6 py-4 text-center">
+                  <th scope="col" className="w-[4%] px-2 py-3 text-center">
                     <input type="checkbox" checked={todosDaPaginaSelecionados} onChange={handleSelecionarTodos} className="w-4 h-4 text-sky-500 bg-slate-100 border-slate-300 rounded focus:ring-sky-400 cursor-pointer" />
                   </th>
-                  <th scope="col" className="w-[35%] px-4 py-4">Descrição</th>
-                  <th scope="col" className="w-[14%] px-4 py-4 text-center">Tipo</th>
-                  <th scope="col" className="w-[16%] px-4 py-4 text-center">Categoria</th>
-                  <th scope="col" className="w-[12%] px-4 py-4 text-center">Vencimento</th>
-                  <th scope="col" className="w-[12%] px-6 py-4 text-right">Valor</th>
-                  <th scope="col" className="w-[11%] px-4 py-4 text-center">Ações</th>
+                  <th scope="col" className="w-[32%] px-3 py-3">Descrição</th>
+                  <th scope="col" className="w-[13%] px-3 py-3 text-center">Tipo</th>
+                  <th scope="col" className="w-[18%] px-3 py-3 text-center">Categoria</th>
+                  <th scope="col" className="w-[12%] px-3 py-3 text-center">Vencimento</th>
+                  <th scope="col" className="w-[11%] px-3 py-3 text-right">Valor</th>
+                  <th scope="col" className="w-[10%] px-2 py-3 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {despesas.map((despesa) => {
                   const tipoStr = despesa.parcelado ? 'PARCELADO' : despesa.recorrente ? 'RECORRENTE' : 'AVULSO';
                   const cartaoStyleClass = getCartaoStyles(despesa.cartaoCor);
+                  const tags = Array.isArray(despesa.tags)
+                    ? despesa.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
+                    : [];
 
                   return (
                     <tr key={despesa.id} className={`hover:bg-slate-50/70 transition-colors ${itensSelecionados.includes(despesa.id) ? 'bg-sky-50/10' : ''}`}>
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-2 py-2.5 text-center">
                         <input type="checkbox" checked={itensSelecionados.includes(despesa.id)} onChange={() => handleSelecionarItem(despesa.id)} className="w-4 h-4 text-sky-500 bg-slate-100 border-slate-300 rounded focus:ring-sky-400 cursor-pointer" />
                       </td>
-                      <td className="px-4 py-3.5 font-semibold text-slate-900 truncate">
-                        <div className="flex items-center gap-3">
+                      <td className="px-3 py-2.5 font-semibold text-slate-900 truncate">
+                        <div className="flex items-center gap-2.5">
                           {despesa.cartaoId ? (
                             <div
                               className={`p-1.5 border rounded-lg shrink-0 transition-colors ${cartaoStyleClass}`}
@@ -638,7 +751,7 @@ export default function DespesasPage({
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-center">
                         <div className="flex flex-col items-center justify-center">
                           <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${tipoStr === 'PARCELADO' ? 'bg-orange-50 text-orange-700 border-orange-100' : tipoStr === 'RECORRENTE' ? 'bg-sky-50 text-sky-700 border-sky-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                             {tipoStr}
@@ -648,36 +761,52 @@ export default function DespesasPage({
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-semibold text-slate-700 text-center">{despesa.categoriaNome || <span className="text-slate-300">-</span>}</td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-medium text-slate-500 text-center">{despesa.dataVencimento ? despesa.dataVencimento.split('-').reverse().join('/') : 'N/A'}</td>
-                      <td className="px-4 py-3.5 text-right font-bold text-slate-900 whitespace-nowrap">{formatarMoeda(despesa.valor)}</td>
-                      <td className="px-4 py-3.5 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="px-3 py-2.5 text-center">
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          <span className="block max-w-full truncate text-xs font-semibold text-slate-700">{despesa.categoriaNome || <span className="text-slate-300">-</span>}</span>
+
+                          {tags.length > 0 && (
+                            <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-sky-50 text-sky-700 border border-sky-100 max-w-20 truncate"
+                                title={tags[0]}
+                              >
+                                {tags[0]}
+                              </span>
+                              {tags.length > 1 && <span className="text-[10px] font-bold text-sky-600">+{tags.length - 1}</span>}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs font-medium text-slate-500 text-center">{despesa.dataVencimento ? despesa.dataVencimento.split('-').reverse().join('/') : 'N/A'}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-slate-900 whitespace-nowrap">{formatarMoeda(despesa.valor)}</td>
+                      <td className="px-2 py-2.5 text-center">
+                        <div className="flex items-center justify-center gap-0.5">
                           {/* 🤖 Botão Criar Regra de Classificação Automática */}
                           <button
                             onClick={() => handleCriarRegraAutomatica(despesa)}
-                            className="p-1.5 bg-slate-100 text-slate-600 rounded-md hover:bg-purple-100 hover:text-purple-600 cursor-pointer transition-colors"
+                            className="p-1 bg-slate-100 text-slate-600 rounded-md hover:bg-purple-100 hover:text-purple-600 cursor-pointer transition-colors"
                             title="Criar regra de classificação automática para esta despesa"
                           >
-                            <Bot size={13} />
+                            <Bot size={12} />
                           </button>
 
                           {/* 📝 Botão Alterar */}
                           <button
                             onClick={() => handleAlterarDespesa(despesa)}
-                            className="p-1.5 bg-slate-100 text-slate-600 rounded-md hover:bg-sky-100 hover:text-sky-600 cursor-pointer transition-colors"
+                            className="p-1 bg-slate-100 text-slate-600 rounded-md hover:bg-sky-100 hover:text-sky-600 cursor-pointer transition-colors"
                             title="Alterar dados desta despesa"
                           >
-                            <Edit2 size={13} />
+                            <Edit2 size={12} />
                           </button>
 
                           {/* 🗑️ Botão Excluir */}
                           <button
-                            onClick={() => confirm('Deseja realmente excluir esta despesa?')}
-                            className="p-1.5 bg-slate-100 text-slate-600 rounded-md hover:bg-rose-100 hover:text-rose-600 cursor-pointer transition-colors"
+                            onClick={() => handleExcluirDespesa(despesa)}
+                            className="p-1 bg-slate-100 text-slate-600 rounded-md hover:bg-rose-100 hover:text-rose-600 cursor-pointer transition-colors"
                             title="Excluir esta despesa permanentemente"
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={12} />
                           </button>
                         </div>
                       </td>
@@ -791,6 +920,59 @@ export default function DespesasPage({
               <div className="flex flex-col gap-1 sm:col-span-2">
                 <label className="font-bold text-slate-500 uppercase tracking-wide text-[10px]">Observações</label>
                 <input type="text" value={formObservacao} onChange={(e) => setFormObservacao(e.target.value)} className="p-2.5 border border-slate-200 bg-slate-50 rounded-xl outline-none font-semibold text-slate-800 focus:border-orange-400 focus:bg-white transition-colors" placeholder="Informações adicionais..." />
+              </div>
+
+              <div className="flex flex-col gap-1 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-500 uppercase tracking-wide text-[10px]">Tags</label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-slate-400">{formTags.length}/5</span>
+                    <button
+                      type="button"
+                      onClick={() => setFormTagsExpandido((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors text-[10px] font-bold uppercase tracking-wide"
+                      title={formTagsExpandido ? 'Ocultar tags' : 'Exibir tags'}
+                    >
+                      <span>{formTagsExpandido ? 'Ocultar tags' : 'Apresentar tags'}</span>
+                      {formTagsExpandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                {!formTagsExpandido && (
+                  <span className="text-[11px] text-slate-400">Clieque em no apresentar tags para visualizar a lista.</span>
+                )}
+
+                {formTagsExpandido && (
+                  <div className="border border-slate-200 rounded-xl bg-slate-50/60 p-2.5">
+                    <div className="max-h-24 overflow-y-auto">
+                      <div className="flex flex-wrap gap-1.5">
+                        {tagsDisponiveis.map((tag) => {
+                          const selecionada = formTags.includes(tag.nome);
+
+                          return (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              onClick={() => handleToggleTag(tag.nome)}
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border cursor-pointer transition-colors ${selecionada ? 'bg-sky-50 text-sky-700 border-sky-100 hover:bg-sky-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                            >
+                              {tag.nome}
+                            </button>
+                          );
+                        })}
+
+                        {tagsDisponiveis.length === 0 && (
+                          <span className="text-[11px] text-slate-400">Nenhuma tag disponivel para selecao.</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {formTagLimiteAtingido && (
+                  <span className="text-[11px] font-semibold text-rose-500">Limite maximo de 5 tags atingido.</span>
+                )}
               </div>
             </div>
 
