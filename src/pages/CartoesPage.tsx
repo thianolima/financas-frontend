@@ -20,8 +20,20 @@ interface CartaoBackend {
   numeroFinal: string;
   titular: string;
   valorLimite: number;
+  valorLimiteUtilizado?: number;
   cor: string;
   cartaoAdicional?: boolean;
+}
+
+interface LimiteCartaoResponse {
+  cartaoId: number;
+  valorLimite: number;
+  valorLimiteUtilizado: number;
+}
+
+interface LimiteCartaoCalculado {
+  valorLimite: number;
+  valorLimiteUtilizado: number;
 }
 
 interface CartoesPageProps {
@@ -75,6 +87,7 @@ export default function CartoesPage({ onAbrirDespesasPorCartao }: CartoesPagePro
   };
 
   const [cartoes, setCartoes] = useState<CartaoBackend[]>([]);
+  const [limitesPorCartao, setLimitesPorCartao] = useState<Record<number, LimiteCartaoCalculado>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,9 +134,46 @@ export default function CartoesPage({ onAbrirDespesasPorCartao }: CartoesPagePro
     }
   }, [token]);
 
+  const fetchLimitesUtilizados = useCallback(async (cartoesAtuais: CartaoBackend[]) => {
+    if (!token) return;
+    if (!cartoesAtuais.length) {
+      setLimitesPorCartao({});
+      return;
+    }
+
+    const resultados = await Promise.allSettled(
+      cartoesAtuais.map((cartao) => axios.get(`/api/cartoes/${cartao.id}/limite`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }))
+    );
+
+    const valores: Record<number, LimiteCartaoCalculado> = {};
+
+    resultados.forEach((resultado, index) => {
+      if (resultado.status !== 'fulfilled') return;
+
+      const cartaoAtual = cartoesAtuais[index];
+      const data = resultado.value.data as Partial<LimiteCartaoResponse>;
+      const cartaoId = cartaoAtual.id;
+      const valorLimite = Number(data.valorLimite ?? cartaoAtual.valorLimite ?? 0);
+      const valorUtilizado = Number(data.valorLimiteUtilizado ?? 0);
+
+      valores[cartaoId] = {
+        valorLimite: Number.isFinite(valorLimite) ? valorLimite : 0,
+        valorLimiteUtilizado: Number.isFinite(valorUtilizado) ? valorUtilizado : 0,
+      };
+    });
+
+    setLimitesPorCartao(valores);
+  }, [token]);
+
   useEffect(() => {
     fetchCartoes();
   }, [fetchCartoes]);
+
+  useEffect(() => {
+    fetchLimitesUtilizados(cartoes);
+  }, [cartoes, fetchLimitesUtilizados]);
 
   const abrirNovo = () => {
     setCartaoParaEditar(null);
@@ -408,6 +458,18 @@ export default function CartoesPage({ onAbrirDespesasPorCartao }: CartoesPagePro
             const bandeiraLabel = BANDEIRA_CONFIG[c.bandeira]?.label || c.bandeira;
             const gradienteConfig = obterGradientePorCor(c.cor);
             const isAdicional = Boolean(c.cartaoAdicional);
+            const limiteDoEndpoint = limitesPorCartao[c.id];
+            const limiteTotal = limiteDoEndpoint?.valorLimite ?? (Number(c.valorLimite) || 0);
+            const valorLimiteUtilizadoPayload = c.valorLimiteUtilizado;
+            const temLimiteUtilizadoNoPayload = valorLimiteUtilizadoPayload !== undefined
+              && valorLimiteUtilizadoPayload !== null
+              && Number.isFinite(Number(valorLimiteUtilizadoPayload));
+            const limiteUtilizado = temLimiteUtilizadoNoPayload
+              ? Number(valorLimiteUtilizadoPayload)
+              : (limiteDoEndpoint?.valorLimiteUtilizado ?? 0);
+            const limiteDisponivel = Math.max(limiteTotal - limiteUtilizado, 0);
+            const percentualUso = limiteTotal > 0 ? Math.min((limiteUtilizado / limiteTotal) * 100, 100) : 0;
+            const percentualUsoLabel = `${percentualUso.toFixed(1).replace('.', ',')}%`;
 
             return (
               <div key={c.id} className="flex flex-col gap-3">
@@ -445,6 +507,29 @@ export default function CartoesPage({ onAbrirDespesasPorCartao }: CartoesPagePro
                         </span>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Limite Utilizado</span>
+                    <span className="text-[11px] font-extrabold text-slate-700">{percentualUsoLabel}</span>
+                  </div>
+
+                  <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-linear-to-r from-orange-400 to-orange-500 transition-all duration-500"
+                      style={{ width: `${percentualUso}%` }}
+                    />
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 font-semibold">
+                    <span>
+                      Utilizado: {limiteUtilizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                    <span>
+                      Disponivel: {limiteDisponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
                   </div>
                 </div>
 
