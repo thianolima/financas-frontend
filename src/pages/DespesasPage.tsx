@@ -13,7 +13,8 @@ import {
   X,
   Wallet,
   CreditCard,
-  Bot
+  Bot,
+  Sparkles
 } from 'lucide-react';
 
 interface Despesa {
@@ -725,6 +726,8 @@ export default function DespesasPage({
                   const tags = Array.isArray(despesa.tags)
                     ? despesa.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
                     : [];
+                  // Sinaliza apenas a 1ª parcela de despesas parceladas (nova parcela entrando no orçamento)
+                  const despesaNova = despesa.parcelado && despesa.parcelaAtual === 1;
 
                   return (
                     <tr key={despesa.id} className={`hover:bg-slate-50/70 transition-colors ${itensSelecionados.includes(despesa.id) ? 'bg-sky-50/10' : ''}`}>
@@ -746,7 +749,14 @@ export default function DespesasPage({
                             </div>
                           )}
                           <div className="flex flex-col min-w-0">
-                            <span className="truncate">{despesa.descricao || 'Sem descrição'}</span>
+                            <span className="truncate flex items-center gap-1">
+                              {despesa.descricao || 'Sem descrição'}
+                              {despesaNova && (
+                                <span title="Nova parcela adicionada ao orçamento" className="inline-flex shrink-0">
+                                  <Sparkles size={12} className="text-amber-500" />
+                                </span>
+                              )}
+                            </span>
                             {despesa.observacao && <span className="text-[11px] text-slate-400 font-normal italic truncate mt-0.5">{despesa.observacao}</span>}
                           </div>
                         </div>

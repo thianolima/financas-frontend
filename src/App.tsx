@@ -82,7 +82,6 @@ function App() {
   };
 
   const handleLogout = useCallback(() => {
-    // Aborta o canal SSE antes de deslogar
     if (sseRef.current) {
       sseRef.current.abort();
       sseRef.current = null;
@@ -103,13 +102,10 @@ function App() {
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
   }
 
-  // Abre/fecha o canal SSE sempre que o token mudar
-  // Usa fetch + ReadableStream para enviar o token no header Authorization
-  // (EventSource nativo não suporta headers customizados)
+  // Loop de conexão persistente com reconexão automática para o API Gateway (ciclos de 25s)
   useEffect(() => {
     if (!token) return;
 
-    // Aborta conexão anterior caso exista
     if (sseRef.current) {
       sseRef.current.abort();
       sseRef.current = null;
@@ -118,71 +114,83 @@ function App() {
     const controller = new AbortController();
     sseRef.current = controller;
 
-    let buffer = '';
+    let isMounted = true;
 
-    fetch('/api/notificacoes/stream', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'text/event-stream',
-      },
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok || !res.body) return;
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
+    const conectarStreamSSE = async () => {
+      while (isMounted && !controller.signal.aborted) {
+        try {
+          const res = await fetch('/api/notificacoes/stream', {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'text/event-stream',
+            },
+            signal: controller.signal,
+          });
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          // Processa blocos completos do protocolo SSE (separados por \n\n)
-          const parts = buffer.split('\n\n');
-          buffer = parts.pop() ?? '';
-
-          for (const part of parts) {
-            if (!part.trim()) continue;
-
-            const eventLine = part.split('\n').find(l => l.startsWith('event:'));
-            const eventName = eventLine?.slice('event:'.length).trim() ?? '';
-
-            if (import.meta.env.DEV) {
-              console.info(`[SSE] evento recebido: ${eventName || 'message'}`);
-            }
-
-            // Ignora PING enviado pelo ALB para manter a conexão ativa
-            if (eventName === 'PING') continue;
-
-            axios.get<Notificacao[]>('/api/notificacoes')
-              .then(response => {
-                const sorted = [...response.data].sort(
-                  (a, b) => new Date(b.dataHoraCriacao).getTime() - new Date(a.dataHoraCriacao).getTime()
-                );
-                setNotificacoes(sorted);
-                // Incrementa badge apenas com dropdown fechado
-                setBellOpen(open => {
-                  if (!open) setNewNotifCount(c => c + 1);
-                  return open;
-                });
-              })
-              .catch(() => {/* silencia erro de fetch de notificações */});
+          if (!res.ok || !res.body) {
+            // Em caso de erro temporário da AWS (ex: 503), aguarda 3s antes de reconectar
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+            continue;
           }
 
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (isMounted && !controller.signal.aborted) {
+            const { done, value } = await reader.read();
+            
+            // Conexão finalizada com sucesso pelo backend aos 25s: sai do loop interno e reconecta
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() ?? '';
+
+            for (const part of parts) {
+              if (!part.trim()) continue;
+
+              const eventLine = part.split('\n').find((l) => l.startsWith('event:'));
+              const eventName = eventLine?.slice('event:'.length).trim() ?? '';
+
+              if (import.meta.env.DEV) {
+                console.info(`[SSE] evento recebido: ${eventName || 'message'}`);
+              }
+
+              // Ignora eventos de Handshake/Ping
+              if (eventName === 'INIT' || eventName === 'PING') continue;
+
+              // Atualiza o painel quando uma nova notificação for enviada via SQS
+              axios
+                .get<Notificacao[]>('/api/notificacoes')
+                .then((response) => {
+                  const sorted = [...response.data].sort(
+                    (a, b) => new Date(b.dataHoraCriacao).getTime() - new Date(a.dataHoraCriacao).getTime()
+                  );
+                  setNotificacoes(sorted);
+                  setBellOpen((open) => {
+                    if (!open) setNewNotifCount((c) => c + 1);
+                    return open;
+                  });
+                })
+                .catch(() => {});
+            }
+          }
+        } catch (err: any) {
+          if (err?.name === 'AbortError') break; // Desconexão proposital no logout/unmount
+          // Em falhas de rede, aguarda 2s antes da reconexão
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         }
-      })
-      .catch((err) => {
-        if (err?.name === 'AbortError') return; // encerramento intencional
-        if (import.meta.env.DEV) console.warn('[SSE] Erro na conexão:', err);
-      });
+      }
+    };
+
+    conectarStreamSSE();
 
     return () => {
+      isMounted = false;
       controller.abort();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
-
 
   const fetchNotificacoes = useCallback(async () => {
     if (!token) return;
@@ -200,7 +208,6 @@ function App() {
     }
   }, [token]);
 
-  // Carrega as notificações automaticamente assim que o token está disponível
   useEffect(() => {
     if (token && !isTokenExpirado(token)) {
       fetchNotificacoes();
@@ -211,7 +218,7 @@ function App() {
     const next = !bellOpen;
     setBellOpen(next);
     if (next) {
-      setNewNotifCount(0); // zera badge de novas ao abrir
+      setNewNotifCount(0);
       fetchNotificacoes();
     }
   };
@@ -221,13 +228,14 @@ function App() {
     setActivePage('despesas');
   }, []);
 
-  const hoje = notificacoes.filter(n => getGrupo(n.dataHoraCriacao) === 'hoje');
-  const semana = notificacoes.filter(n => getGrupo(n.dataHoraCriacao) === 'semana');
-  const anteriores = notificacoes.filter(n => getGrupo(n.dataHoraCriacao) === 'anteriores');
+  const hoje = notificacoes.filter((n) => getGrupo(n.dataHoraCriacao) === 'hoje');
+  const semana = notificacoes.filter((n) => getGrupo(n.dataHoraCriacao) === 'semana');
+  const anteriores = notificacoes.filter((n) => getGrupo(n.dataHoraCriacao) === 'anteriores');
 
   const renderPage = () => {
     switch (activePage) {
-      case 'dashboard': return <Dashboard />;
+      case 'dashboard':
+        return <Dashboard />;
       case 'despesas':
         return (
           <DespesasPage
@@ -235,20 +243,23 @@ function App() {
             onConsumirPreFiltroNavegacao={() => setDespesasPreFiltroNavegacao(null)}
           />
         );
-      case 'cartoes': return <CartoesPage onAbrirDespesasPorCartao={handleAbrirDespesasPorCartao} />;
-      case 'projecao': return <ProjecaoDespesaPage />;
-      case 'profile': return <Profile />;
-      default: return <Dashboard />;
+      case 'cartoes':
+        return <CartoesPage onAbrirDespesasPorCartao={handleAbrirDespesasPorCartao} />;
+      case 'projecao':
+        return <ProjecaoDespesaPage />;
+      case 'profile':
+        return <Profile />;
+      default:
+        return <Dashboard />;
     }
   };
 
   if (!token) {
-    return <Login onLoginSuccess={handleLoginSuccess} />
+    return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden antialiased">
-
       <Sidebar
         menuItems={menuItems}
         activePage={activePage}
@@ -259,10 +270,7 @@ function App() {
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-
-        {/* Header Superior - Borda removida */}
         <header className="bg-[#091522] lg:bg-slate-50/50 text-white lg:text-slate-800 h-16 px-4 lg:px-8 flex items-center justify-between lg:justify-end z-20 shrink-0">
-
           <div className="flex items-center lg:hidden">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -273,7 +281,6 @@ function App() {
           </div>
 
           <div className="flex items-center gap-4">
-
             <div className="relative">
               <button
                 onClick={handleBellOpen}
@@ -299,8 +306,6 @@ function App() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setBellOpen(false)} />
                   <div className="absolute right-0 mt-2 w-96 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden text-slate-800 font-sans">
-
-                    {/* Header */}
                     <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Bell size={16} className="text-orange-500" fill="currentColor" />
@@ -313,7 +318,6 @@ function App() {
                       )}
                     </div>
 
-                    {/* Body */}
                     <div className="max-h-[420px] overflow-y-auto">
                       {loadingNotif ? (
                         <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -327,46 +331,70 @@ function App() {
                         </div>
                       ) : (
                         <>
-                          {/* Hoje */}
                           {hoje.length > 0 && (
                             <div>
                               <div className="px-5 py-2 bg-slate-50 border-b border-slate-100">
-                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Hoje</span>
+                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                  Hoje
+                                </span>
                               </div>
                               {hoje.map((n, i) => (
-                                <div key={`hoje-${i}`} className={`px-5 py-4 ${i < hoje.length - 1 ? 'border-b border-slate-100' : ''} hover:bg-slate-50/80 transition-colors`}>
+                                <div
+                                  key={`hoje-${i}`}
+                                  className={`px-5 py-4 ${
+                                    i < hoje.length - 1 ? 'border-b border-slate-100' : ''
+                                  } hover:bg-slate-50/80 transition-colors`}
+                                >
                                   <p className="text-sm font-semibold text-slate-900 leading-snug">{n.mensagem}</p>
-                                  <span className="text-[11px] text-slate-400 font-medium mt-1.5 block">{formatarDataHora(n.dataHoraCriacao)}</span>
+                                  <span className="text-[11px] text-slate-400 font-medium mt-1.5 block">
+                                    {formatarDataHora(n.dataHoraCriacao)}
+                                  </span>
                                 </div>
                               ))}
                             </div>
                           )}
 
-                          {/* Últimos 7 dias */}
                           {semana.length > 0 && (
                             <div>
                               <div className="px-5 py-2 bg-slate-50 border-b border-slate-100 border-t border-t-slate-200">
-                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Últimos 7 dias</span>
+                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                  Últimos 7 dias
+                                </span>
                               </div>
                               {semana.map((n, i) => (
-                                <div key={`semana-${i}`} className={`px-5 py-4 ${i < semana.length - 1 ? 'border-b border-slate-100' : ''} hover:bg-slate-50/80 transition-colors`}>
+                                <div
+                                  key={`semana-${i}`}
+                                  className={`px-5 py-4 ${
+                                    i < semana.length - 1 ? 'border-b border-slate-100' : ''
+                                  } hover:bg-slate-50/80 transition-colors`}
+                                >
                                   <p className="text-sm font-semibold text-slate-900 leading-snug">{n.mensagem}</p>
-                                  <span className="text-[11px] text-slate-400 font-medium mt-1.5 block">{formatarDataHora(n.dataHoraCriacao)}</span>
+                                  <span className="text-[11px] text-slate-400 font-medium mt-1.5 block">
+                                    {formatarDataHora(n.dataHoraCriacao)}
+                                  </span>
                                 </div>
                               ))}
                             </div>
                           )}
 
-                          {/* Anteriores */}
                           {anteriores.length > 0 && (
                             <div>
                               <div className="px-5 py-2 bg-slate-50 border-b border-slate-100 border-t border-t-slate-200">
-                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Anteriores</span>
+                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                  Anteriores
+                                </span>
                               </div>
                               {anteriores.map((n, i) => (
-                                <div key={`ant-${i}`} className={`px-5 py-4 ${i < anteriores.length - 1 ? 'border-b border-slate-100' : ''} hover:bg-slate-50/80 transition-colors`}>
+                                <div
+                                  key={`ant-${i}`}
+                                  className={`px-5 py-4 ${
+                                    i < anteriores.length - 1 ? 'border-b border-slate-100' : ''
+                                  } hover:bg-slate-50/80 transition-colors`}
+                                >
                                   <p className="text-sm font-semibold text-slate-900 leading-snug">{n.mensagem}</p>
-                                  <span className="text-[11px] text-slate-400 font-medium mt-1.5 block">{formatarDataHora(n.dataHoraCriacao)}</span>
+                                  <span className="text-[11px] text-slate-400 font-medium mt-1.5 block">
+                                    {formatarDataHora(n.dataHoraCriacao)}
+                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -374,7 +402,6 @@ function App() {
                         </>
                       )}
                     </div>
-
                   </div>
                 </>
               )}
@@ -388,13 +415,9 @@ function App() {
               TL
             </button>
           </div>
-
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-slate-50/50">
-          {renderPage()}
-        </main>
-
+        <main className="flex-1 overflow-y-auto bg-slate-50/50">{renderPage()}</main>
       </div>
     </div>
   );

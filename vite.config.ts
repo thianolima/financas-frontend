@@ -9,7 +9,7 @@ export default defineConfig({
       // Toda requisição do seu Axios que começar com '/api' será capturada aqui
       '/api': {
         // O Vite vai repassar a chamada para o seu Load Balancer na AWS
-        target: 'http://api.thianolima.com',
+        target: 'https://api.thianolima.com',
         // Altera o cabeçalho 'Origin' da requisição para o destino da AWS, enganando o CORS
         changeOrigin: true,
         // Remove o prefixo '/api' antes de entregar a requisição para o Spring Boot
