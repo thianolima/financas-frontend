@@ -15,7 +15,7 @@ import axios from 'axios';
 import {
   Wallet,
   CreditCard,
-  SlidersHorizontal,
+  Filter,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -520,7 +520,7 @@ export default function ProjecaoDespesaPage() {
             {/* Cabeçalho Unificado */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2 text-slate-800 font-bold text-sm uppercase tracking-wider">
-                <SlidersHorizontal size={18} className="text-slate-500" />
+                <Filter size={18} className="text-slate-500" />
                 <span>Filtros</span>
               </div>
 

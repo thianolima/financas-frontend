@@ -9,7 +9,8 @@ import {
   ShieldCheck,
   Upload,
   ReceiptText,
-  RefreshCw
+  RefreshCw,
+  Bot
 } from 'lucide-react';
 
 interface CartaoBackend {
@@ -422,7 +423,7 @@ export default function CartoesPage({ onAbrirDespesasPorCartao }: CartoesPagePro
       {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Cartões de Crédito</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Gerenciamento deCartões de Crédito</h1>
           <p className="text-sm text-slate-500">Gerencie os cartões utilizados nas despesas do sistema.</p>
         </div>
         <button
@@ -560,6 +561,9 @@ export default function CartoesPage({ onAbrirDespesasPorCartao }: CartoesPagePro
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => showToast(`Em breve: reprocessar regras de ${c.nome}.`)} title="Reprocessar regras" className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-purple-100 hover:text-purple-600 transition-colors cursor-pointer">
+                      <Bot size={13} />
+                    </button>
                     <button onClick={() => abrirEditar(c)} title="Editar" className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors cursor-pointer">
                       <Edit2 size={13} />
                     </button>

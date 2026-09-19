@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { ChevronLeft, ChevronRight, Calendar, CreditCard, PieChart } from 'lucide-react';
+import { ArrowDownLeft, ArrowUp, ArrowUpRight, Calendar, ChevronLeft, ChevronRight, CreditCard, PieChart, ReceiptText, Scale } from 'lucide-react';
 
 const MESES_NOMES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 
@@ -41,12 +41,19 @@ interface DashboardHistoricoItem {
   projecao: boolean;
 }
 
+interface DashboardTotalParcelaItem {
+  tipoParcela: 'NOVA' | 'FINALIZADA';
+  quantidade: number;
+  valorTotal: number;
+}
+
 interface DashboardResponse {
   cardRankingCategorias: DashboardRankingItem[];
   cardDespesasPorCategoria: DashboardRankingItem[];
   cardTotaisDespesas: DashboardTotalItem[];
   cardLimitesCartoes: DashboardLimiteCartao[];
   cardDespesasPorHistorico: DashboardHistoricoItem[];
+  cardTotaisPrimeiraUltimaParcela?: DashboardTotalParcelaItem[];
 }
 
 const DASHBOARD_RESPONSE_INICIAL: DashboardResponse = {
@@ -55,6 +62,7 @@ const DASHBOARD_RESPONSE_INICIAL: DashboardResponse = {
   cardTotaisDespesas: [],
   cardLimitesCartoes: [],
   cardDespesasPorHistorico: [],
+  cardTotaisPrimeiraUltimaParcela: [],
 };
 
 // Interface interna do gráfico
@@ -97,7 +105,11 @@ const obterGradientePorCor = (corKey: string) => {
   }
 };
 
-export default function Dashboard() {
+interface DashboardProps {
+  onAbrirDespesasParceladas?: (anomes: string) => void;
+}
+
+export default function Dashboard({}: DashboardProps) {
   const token = localStorage.getItem('@financeiro:token') || '';
   const [anoAtual, setAnoAtual] = useState<number>(() => new Date().getFullYear());
   const [mesAtual, setMesAtual] = useState<number>(() => new Date().getMonth() + 1);
@@ -120,6 +132,20 @@ export default function Dashboard() {
       total: encontrar('TOTAL'),
     };
   }, [dadosDashboard.cardTotaisDespesas]);
+
+  const totaisParcelas = useMemo(() => {
+    const totais = dadosDashboard.cardTotaisPrimeiraUltimaParcela ?? [];
+    const encontrar = (tipo: DashboardTotalParcelaItem['tipoParcela']) =>
+      totais.find((total) => total.tipoParcela === tipo) ?? { tipoParcela: tipo, quantidade: 0, valorTotal: 0 };
+    const nova = encontrar('NOVA');
+    const finalizada = encontrar('FINALIZADA');
+
+    return {
+      nova,
+      finalizada,
+      saldo: finalizada.valorTotal - nova.valorTotal,
+    };
+  }, [dadosDashboard.cardTotaisPrimeiraUltimaParcela]);
 
   const despesasPorCategoriaMes = useMemo(() => {
     return dadosDashboard.cardDespesasPorCategoria.map((item) => ({
@@ -418,8 +444,136 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* LINHA 1: Histórico + Limites */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* LINHA: Movimento de Parcelas + Limites de Cartões + Histórico de Despesas (3 colunas na mesma linha) */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Movimento de Parcelas */}
+        <section className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-sky-50 text-sky-600 rounded-xl">
+              <ReceiptText size={18} />
+            </div>
+            <div>
+              <h2 className="text-base md:text-lg font-bold text-slate-900">
+                Movimento das Parcelas
+              </h2>
+              <p className="text-xs text-slate-500">
+                Impacto das parcelas do mês.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5">
+            <div className="border border-orange-200 bg-orange-50/40 rounded-xl p-3 flex flex-col justify-between shadow-xs gap-1.5">
+              <div className="flex items-start gap-2">
+                <div className="p-1 bg-orange-100 text-orange-600 rounded-lg shrink-0 mt-0.5">
+                  <ArrowUpRight size={14} />
+                </div>
+                <div>
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-orange-700">NOVAS</h3>
+                  <p className="text-[10px] text-slate-500">Primeira parcela para este mês.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-lg font-black text-orange-950">
+                  {loadingDashboard ? '...' : formatarMoeda(totaisParcelas.nova.valorTotal)}
+                </span>
+                <span className="inline-flex items-center rounded-full bg-white border border-orange-200 px-2.5 py-0.5 text-[10px] font-extrabold text-orange-950 tracking-wide uppercase shadow-xs shrink-0">
+                  {loadingDashboard ? 'carregando...' : `${totaisParcelas.nova.quantidade} ${totaisParcelas.nova.quantidade === 1 ? 'COMPRA' : 'COMPRAS'}`}
+                </span>
+              </div>
+            </div>
+
+            <div className="border border-sky-200 bg-sky-50/40 rounded-xl p-3 flex flex-col justify-between shadow-xs gap-1.5">
+              <div className="flex items-start gap-2">
+                <div className="p-1 bg-sky-100 text-sky-600 rounded-lg shrink-0 mt-0.5">
+                  <ArrowDownLeft size={14} />
+                </div>
+                <div>
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-sky-700">FINALIZADAS</h3>
+                  <p className="text-[10px] text-slate-500">Última parcela para este mês.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-lg font-black text-sky-950">
+                  {loadingDashboard ? '...' : formatarMoeda(totaisParcelas.finalizada.valorTotal)}
+                </span>
+                <span className="inline-flex items-center rounded-full bg-white border border-sky-200 px-2.5 py-0.5 text-[10px] font-extrabold text-sky-950 tracking-wide uppercase shadow-xs shrink-0">
+                  {loadingDashboard ? 'carregando...' : `${totaisParcelas.finalizada.quantidade} ${totaisParcelas.finalizada.quantidade === 1 ? 'COMPRA' : 'COMPRAS'}`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {(() => {
+            const saldoPositivo = totaisParcelas.saldo > 0;
+            const saldoNegativo = totaisParcelas.saldo < 0;
+            const saldoClasse = saldoPositivo ? 'border-emerald-200 bg-emerald-50/40 text-emerald-600' : saldoNegativo ? 'border-rose-200 bg-rose-50/40 text-rose-600' : 'border-slate-200 bg-slate-50 text-slate-600';
+            const saldoDescricao = saldoPositivo ? 'comprometimento reduzido' : saldoNegativo ? 'comprometimento aumentado' : 'inalterado';
+
+            return (
+              <div className={`border rounded-xl p-3 flex items-center justify-between gap-2 ${saldoClasse}`}>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-white/70 rounded-lg shrink-0"><Scale size={14} /></div>
+                  <div>
+                    <p className="text-[11px] font-extrabold uppercase tracking-wider">Saldo do movimento</p>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{saldoDescricao}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-black">{loadingDashboard ? '...' : `${totaisParcelas.saldo > 0 ? '+' : ''}${formatarMoeda(totaisParcelas.saldo)}`}</p>
+                </div>
+              </div>
+            );
+          })()}
+        </section>
+
+        {/* Limites de Cartões */}
+        <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-xl">
+              <CreditCard size={18} />
+            </div>
+            <div>
+              <h2 className="text-base md:text-lg font-bold text-slate-900">Limites dos Cartões</h2>
+              <p className="text-xs text-slate-500">Utilização do limite de crédito.</p>
+            </div>
+          </div>
+
+          <div className="space-y-3.5 my-auto">
+            {loadingDashboard ? (
+              <div className="text-center py-4 text-xs text-slate-400 font-semibold">Carregando cartões...</div>
+            ) : dadosDashboard.cardLimitesCartoes.length === 0 ? (
+              <div className="text-center py-4 text-xs text-slate-400 font-semibold">Nenhum cartão encontrado.</div>
+            ) : dadosDashboard.cardLimitesCartoes.map((cartao) => {
+              const percentual = cartao.valorLimite > 0 ? (cartao.valorLimiteUtilizado / cartao.valorLimite) * 100 : 0;
+              const gradiente = obterGradientePorCor(cartao.cor);
+
+              return (
+                <div key={cartao.cartaoId} className="space-y-1">
+                  <div className="flex items-start justify-between gap-2 text-xs md:text-sm font-bold text-slate-700">
+                    <span className="min-w-0 truncate">{cartao.nome} <span className="text-[10px] text-slate-400 font-semibold">({cartao.bandeira} • {cartao.numeroFinal})</span></span>
+                    <span className="text-[11px] text-slate-500 font-semibold">{percentual.toFixed(0)}%</span>
+                  </div>
+
+                  <div className="relative w-full h-2 rounded-full overflow-hidden bg-slate-100/80 border border-slate-200/30">
+                    <div
+                      className={`h-full rounded-full bg-gradient-to-r ${gradiente} transition-all duration-500`}
+                      style={{ width: `${Math.min(100, percentual)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex justify-between text-[10px] font-bold text-slate-500">
+                    <span>Utilizado: <span className="text-slate-800">{formatarMoeda(cartao.valorLimiteUtilizado)}</span></span>
+                    <span>Limite: <span className="text-slate-800">{formatarMoeda(cartao.valorLimite)}</span></span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Histórico de Despesas */}
         <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -428,30 +582,30 @@ export default function Dashboard() {
             </div>
             <div>
               <h2 className="text-base md:text-lg font-bold text-slate-900">Histórico de Despesas</h2>
-              <p className="text-xs text-slate-500">Últimos 3 meses no período selecionado.</p>
+              <p className="text-xs text-slate-500">Evolução no período.</p>
             </div>
           </div>
 
           <div className="relative w-full h-52 select-none my-auto">
             <div
-              className="absolute inset-0 grid gap-2.5 z-0"
+              className="absolute inset-0 grid gap-1.5 z-0"
               style={{ gridTemplateColumns: `repeat(${historicoDespesasPontos.length}, minmax(0, 1fr))` }}
             >
               {historicoDespesasPontos.map((ponto, idx) => (
                 <div
                   key={`compact-${ponto.mes}-${idx}`}
-                  className={`rounded-2xl border flex flex-col justify-between items-center py-3 px-2 shadow-xs ${ponto.isProjecao
+                  className={`rounded-xl border flex flex-col justify-between items-center py-2.5 px-1 shadow-xs ${ponto.isProjecao
                     ? 'bg-blue-50/60 border-blue-200/80'
                     : 'bg-slate-50/40 border-slate-200/70'
                     }`}
                 >
-                  <span className={`font-bold text-sm ${ponto.isProjecao ? 'text-blue-700' : 'text-slate-600'}`}>
+                  <span className={`font-bold text-xs ${ponto.isProjecao ? 'text-blue-700' : 'text-slate-600'}`}>
                     {ponto.label}
                   </span>
 
                   <div className="h-8 w-full" />
 
-                  <span className={`font-extrabold text-xs md:text-sm tracking-tight text-center ${ponto.isProjecao ? 'text-blue-900' : 'text-slate-800'}`}>
+                  <span className={`font-extrabold text-[10px] md:text-xs tracking-tight text-center ${ponto.isProjecao ? 'text-blue-900' : 'text-slate-800'}`}>
                     {formatarMoeda(ponto.valor)}
                   </span>
                 </div>
@@ -502,7 +656,7 @@ export default function Dashboard() {
                 return (
                   <div
                     key={`compact-point-${idx}`}
-                    className={`absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow-md transform -translate-x-1/2 -translate-y-1/2 ${ponto.isProjecao ? 'bg-blue-600 ring-2 ring-blue-200' : 'bg-teal-600'
+                    className={`absolute w-3 h-3 rounded-full border-2 border-white shadow-md transform -translate-x-1/2 -translate-y-1/2 ${ponto.isProjecao ? 'bg-blue-600 ring-2 ring-blue-200' : 'bg-teal-600'
                       }`}
                     style={{ left: xPct, top: yPct }}
                   />
@@ -522,54 +676,9 @@ export default function Dashboard() {
             </span>
           </div>
         </div>
-
-        {/* Limites de Cartões */}
-        <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-xl">
-              <CreditCard size={18} />
-            </div>
-            <div>
-              <h2 className="text-base md:text-lg font-bold text-slate-900">Limites de Cartões</h2>
-              <p className="text-xs text-slate-500">Utilização do limite de crédito disponível.</p>
-            </div>
-          </div>
-
-          <div className="space-y-3.5 my-auto">
-            {loadingDashboard ? (
-              <div className="text-center py-4 text-xs text-slate-400 font-semibold">Carregando cartões...</div>
-            ) : dadosDashboard.cardLimitesCartoes.length === 0 ? (
-              <div className="text-center py-4 text-xs text-slate-400 font-semibold">Nenhum cartão encontrado.</div>
-            ) : dadosDashboard.cardLimitesCartoes.map((cartao) => {
-              const percentual = cartao.valorLimite > 0 ? (cartao.valorLimiteUtilizado / cartao.valorLimite) * 100 : 0;
-              const gradiente = obterGradientePorCor(cartao.cor);
-
-              return (
-                <div key={cartao.cartaoId} className="space-y-1">
-                  <div className="flex items-start justify-between gap-2 text-xs md:text-sm font-bold text-slate-700">
-                    <span className="min-w-0 truncate">{cartao.nome} <span className="text-[10px] text-slate-400 font-semibold">({cartao.bandeira} • {cartao.numeroFinal})</span></span>
-                    <span className="text-[11px] text-slate-500 font-semibold">{percentual.toFixed(0)}%</span>
-                  </div>
-
-                  <div className="relative w-full h-2 rounded-full overflow-hidden bg-slate-100/80 border border-slate-200/30">
-                    <div
-                      className={`h-full rounded-full bg-gradient-to-r ${gradiente} transition-all duration-500`}
-                      style={{ width: `${Math.min(100, percentual)}%` }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                    <span>Utilizado: <span className="text-slate-800">{formatarMoeda(cartao.valorLimiteUtilizado)}</span></span>
-                    <span>Limite: <span className="text-slate-800">{formatarMoeda(cartao.valorLimite)}</span></span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </div>
 
-      {/* LINHA 2: Despesas por Categoria */}
+      {/* LINHA: Despesas por Categoria */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col gap-6">
         <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4">
           <div className="p-2 bg-cyan-50 text-cyan-700 rounded-xl">

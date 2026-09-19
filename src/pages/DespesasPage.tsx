@@ -6,7 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   ShieldCheck,
-  SlidersHorizontal,
+  Filter,
   Trash2,
   Edit2,
   RefreshCw,
@@ -48,8 +48,9 @@ interface TagDisponivel {
 }
 
 interface DespesasPreFiltroNavegacao {
-  cartaoId: number;
+  cartaoId?: number;
   anomes: string;
+  tipo?: 'PARCELADO';
 }
 
 interface DespesasPageProps {
@@ -197,9 +198,9 @@ export default function DespesasPage({
       }
     }
 
-    setFiltroTipo('TODOS');
+    setFiltroTipo(preFiltroNavegacao.tipo ?? 'TODOS');
     setFiltroCategoria('TODOS');
-    setFiltroCartao(String(preFiltroNavegacao.cartaoId));
+    setFiltroCartao(preFiltroNavegacao.cartaoId ? String(preFiltroNavegacao.cartaoId) : 'TODOS');
     setPaginaAtual(1);
     setFiltrosIniciaisProntos(true);
     onConsumirPreFiltroNavegacao?.();
@@ -587,7 +588,7 @@ export default function DespesasPage({
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
           <div className="flex items-center gap-2 pb-2 font-bold text-sm uppercase tracking-wider">
-            <SlidersHorizontal size={16} className="text-slate-500" />
+            <Filter size={16} className="text-slate-500" />
             <span>Filtros</span>
           </div>
 

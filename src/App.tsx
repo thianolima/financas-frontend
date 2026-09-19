@@ -6,7 +6,8 @@ import Profile from './pages/Profile';
 import Login from './pages/LoginPage';
 import DespesasPage from './pages/DespesasPage';
 import CartoesPage from './pages/CartoesPage';
-import { LayoutDashboard, User, ReceiptText, TrendingUp, Bell, Menu, CreditCard } from 'lucide-react';
+import RegraPage from './pages/RegraPage';
+import { LayoutDashboard, User, ReceiptText, TrendingUp, Bell, Menu, CreditCard, ListChecks } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import axios from 'axios';
 
@@ -17,8 +18,9 @@ interface Notificacao {
 }
 
 interface DespesasPreFiltroNavegacao {
-  cartaoId: number;
+  cartaoId?: number;
   anomes: string;
+  tipo?: 'PARCELADO';
 }
 
 function formatarDataHora(iso: string): string {
@@ -72,6 +74,7 @@ function App() {
     { id: 'despesas', label: 'Despesas', icon: ReceiptText },
     { id: 'cartoes', label: 'Cartões', icon: CreditCard },
     { id: 'projecao', label: 'Projeção', icon: TrendingUp },
+    { id: 'regras', label: 'Regras', icon: ListChecks },
     { id: 'profile', label: 'Perfil', icon: User },
   ];
 
@@ -228,6 +231,11 @@ function App() {
     setActivePage('despesas');
   }, []);
 
+  const handleAbrirDespesasParceladas = useCallback((anomes: string) => {
+    setDespesasPreFiltroNavegacao({ anomes, tipo: 'PARCELADO' });
+    setActivePage('despesas');
+  }, []);
+
   const hoje = notificacoes.filter((n) => getGrupo(n.dataHoraCriacao) === 'hoje');
   const semana = notificacoes.filter((n) => getGrupo(n.dataHoraCriacao) === 'semana');
   const anteriores = notificacoes.filter((n) => getGrupo(n.dataHoraCriacao) === 'anteriores');
@@ -235,7 +243,7 @@ function App() {
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard':
-        return <Dashboard />;
+        return <Dashboard onAbrirDespesasParceladas={handleAbrirDespesasParceladas} />;
       case 'despesas':
         return (
           <DespesasPage
@@ -247,6 +255,8 @@ function App() {
         return <CartoesPage onAbrirDespesasPorCartao={handleAbrirDespesasPorCartao} />;
       case 'projecao':
         return <ProjecaoDespesaPage />;
+      case 'regras':
+        return <RegraPage />;
       case 'profile':
         return <Profile />;
       default:
