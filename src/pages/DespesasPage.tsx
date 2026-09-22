@@ -437,7 +437,7 @@ export default function DespesasPage({
     const payload = {
       categoriaId: Number(formRegraCategoria),
       descricao: formRegraDescricao,
-      termoBusca: formRegraTermo.trim(),
+      termos: [formRegraTermo.trim()],
     };
 
     try {
